@@ -48,26 +48,26 @@ function getDb() {
   return db;
 }
 
+// 统一 key 为 string
+function toKey(id) {
+  return String(id);
+}
+
 async function get(id) {
   if (db == null) return null;
   try {
-    return await db.get(String(id));
+    return await db.get(toKey(id));
   } catch (e) {
     if (e.status != 404) output("db get err:", e);
     return null;
   }
 }
 
+// upsert: 存在则覆盖, 不存在则插入
 function put(id, msg) {
   if (db == null) return;
-  db.get(String(id), (error) => {
-    if (error && error.status == 404) {
-      db.put(String(id), msg, (err) => {
-        if (err) output("db put err:", err);
-      });
-    } else if (error) {
-      output("db get err:", error);
-    }
+  db.put(toKey(id), msg, (err) => {
+    if (err) output("db put err:", err);
   });
 }
 

@@ -3,7 +3,7 @@ var recalledMsgList = [];
 var nowConfig = {};
 
 export async function onSettingWindowCreated(view) {
-  nowConfig = await window.anti_recall.getNowConfig();
+  nowConfig = await getNowConfigCached();
 
   const new_navbar_item = `
     <plugin-menu>
@@ -14,6 +14,19 @@ export async function onSettingWindowCreated(view) {
                 <setting-item data-direction="row">
                   <setting-text>操作</setting-text>
                     <button id="clearDb" class="q-button q-button--small q-button--secondary">清空已储存的撤回消息</button>
+                </setting-item>
+                <setting-item data-direction="row">
+                  <setting-text>导出</setting-text>
+                    <button id="exportRecalled" class="q-button q-button--small q-button--secondary">导出撤回消息 (JSON)</button>
+                </setting-item>
+                <setting-item data-direction="row">
+                  <setting-text>统计</setting-text>
+                    <button id="showStats" class="q-button q-button--small q-button--secondary">查看撤回统计</button>
+                </setting-item>
+                <setting-item data-direction="row">
+                  <div id="statsPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px; margin-top:8px;">
+                    <div id="statsContent">加载中...</div>
+                  </div>
                 </setting-item>
                 <setting-item data-direction="row">
                     <div style="width:90%;" >
@@ -342,6 +355,38 @@ export async function onSettingWindowCreated(view) {
     await window.anti_recall.clearDb();
   };
 
+  //导出撤回消息
+  node2.querySelector("#exportRecalled").onclick = async () => {
+    await window.anti_recall.exportRecalled();
+  };
+
+  //撤回统计
+  node2.querySelector("#showStats").onclick = async () => {
+    var panel = node2.querySelector("#statsPanel");
+    var content = node2.querySelector("#statsContent");
+    if (panel.style.display === "none") {
+      panel.style.display = "block";
+      content.innerHTML = "加载中...";
+      try {
+        var stats = await window.anti_recall.getRecallStats();
+        var html = `<div style="font-size:14px; line-height:1.8;">
+          <b>总计:</b> ${stats.total} 条撤回消息<br>
+          <b>含媒体:</b> ${stats.withMedia} 条 | <b>纯文本:</b> ${stats.textOnly} 条<br>
+          <b>按会话分布:</b><br>`;
+        var sortedPeers = Object.entries(stats.byPeer).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        for (var [peer, count] of sortedPeers) {
+          html += `&nbsp;&nbsp;${peer}: ${count} 条<br>`;
+        }
+        html += `</div>`;
+        content.innerHTML = html;
+      } catch (e) {
+        content.innerHTML = "加载失败: " + e.message;
+      }
+    } else {
+      panel.style.display = "none";
+    }
+  };
+
   node2.querySelector("#maxMsgLimit").onblur = async () => {
     var limit = parseFloat(node2.querySelector("#maxMsgLimit").value);
     if (limit <= 0 || limit > 99999999) {
@@ -461,7 +506,7 @@ export async function onSettingWindowCreated(view) {
 }
 
 async function patchCss() {
-  nowConfig = await window.anti_recall.getNowConfig();
+  nowConfig = await getNowConfigCached();
 
   var cssNode = document
     .evaluate("/html/head/style[@id='anti-recall-css']", document)
@@ -535,7 +580,27 @@ async function patchCss() {
 onLoad();
 
 async function onLoad() {
-  anti_recall.repatchCss(async (event, _) => {
+  // 缓存 nowConfig, 避免频繁 IPC; 配置变更时主进程会主动推送 repatchCss 更新
+  var cachedConfig = null;
+  var configLastFetch = 0;
+  async function getNowConfigCached() {
+    var now = Date.now();
+    // 1秒内缓存有效
+    if (cachedConfig != null && now - configLastFetch < 1000) {
+      return cachedConfig;
+    }
+    try {
+      cachedConfig = await window.anti_recall.getNowConfig();
+      configLastFetch = now;
+      return cachedConfig;
+    } catch (e) {
+      return cachedConfig || {};
+    }
+  }
+  // 主进程通知配置变更时立即失效缓存
+  anti_recall.repatchCss(async () => {
+    cachedConfig = null;
+    configLastFetch = 0;
     await patchCss();
   });
 
@@ -576,7 +641,7 @@ async function onLoad() {
   });
 
   // 周期性拉取撤回列表并补标 —— 解决QQ SPA切会话/重渲染后标记丢失导致撤回显示为灰条
-  // 聊天区域存在时拉取, 500ms 太频繁改为 1s; 页面隐藏/失焦时暂停, 恢复时重新启动
+  // 聊天区域存在时拉取, 1s 一次; 页面隐藏/失焦时暂停, 恢复时重新启动
   var pullTimer = null;
   function startPullLoop() {
     if (pullTimer != null) return;
@@ -595,7 +660,16 @@ async function onLoad() {
           }
         }
       } catch (e) {}
-    }, 1000); // 1 秒一次足够, SPA DOM 重建不会这么快, 但 CPU 可省一半
+    }, 1000);
+  }
+  // 页面卸载时清理定时器, 避免泄漏
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", () => {
+      if (pullTimer != null) {
+        clearInterval(pullTimer);
+        pullTimer = null;
+      }
+    });
   }
   // 从隐藏恢复时立即拉一次, 避免卡顿等下一轮
   if (typeof document !== "undefined") {
@@ -666,7 +740,7 @@ async function onLoad() {
       .querySelector(".chat-msg-area__vlist")
       ?.querySelectorAll(".ml-item");
 
-    nowConfig = await window.anti_recall.getNowConfig();
+    nowConfig = await getNowConfigCached();
 
     for (var el of elements) {
       var findMsgId = recalledMsgList.find((i) => i == el.id);

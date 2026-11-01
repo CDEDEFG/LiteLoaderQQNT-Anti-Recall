@@ -81,6 +81,86 @@ async function onLoad() {
     msgCache.getRecalledIds(null)
   );
 
+  // IPC: 导出撤回消息 (JSON 格式)
+  ipcMain.handle("LiteLoader.anti_recall.exportRecalled", async () => {
+    const { dialog } = require("electron");
+    const recalledList = msgCache.getRecalledMsgList();
+    if (recalledList.length === 0) {
+      dialog.showMessageBox({
+        type: "info",
+        title: "提示",
+        message: "当前没有已撤回的消息可导出。",
+        buttons: ["确定"],
+      });
+      return;
+    }
+    const result = await dialog.showSaveDialog({
+      title: "导出撤回消息",
+      defaultPath: `recalled_msgs_${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [
+        { name: "JSON 文件", extensions: ["json"] },
+        { name: "所有文件", extensions: ["*"] },
+      ],
+    });
+    if (!result.canceled && result.filePath) {
+      try {
+        const exportData = recalledList.map((item) => ({
+          id: item.id,
+          sender: item.sender,
+          msg: item.msg,
+          recallTime: item.msg?.recallTime,
+          exportTime: new Date().toISOString(),
+        }));
+        fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), "utf-8");
+        dialog.showMessageBox({
+          type: "info",
+          title: "导出成功",
+          message: `已导出 ${recalledList.length} 条撤回消息到:\n${result.filePath}`,
+          buttons: ["确定"],
+        });
+      } catch (e) {
+        dialog.showMessageBox({
+          type: "error",
+          title: "导出失败",
+          message: `导出失败: ${e.message}`,
+          buttons: ["确定"],
+        });
+      }
+    }
+  });
+
+  // IPC: 撤回统计
+  ipcMain.handle("LiteLoader.anti_recall.getRecallStats", async () => {
+    const recalledList = msgCache.getRecalledMsgList();
+    const stats = {
+      total: recalledList.length,
+      byPeer: {},
+      byType: {},
+      withMedia: 0,
+      textOnly: 0,
+    };
+    for (const item of recalledList) {
+      const peer = item.sender || "unknown";
+      stats.byPeer[peer] = (stats.byPeer[peer] || 0) + 1;
+
+      const msg = item.msg;
+      if (msg && msg.elements) {
+        let hasMedia = false;
+        for (const el of msg.elements) {
+          if (el.picElement || el.pttElement || el.videoElement || el.fileElement) {
+            hasMedia = true;
+            break;
+          }
+        }
+        if (hasMedia) stats.withMedia++;
+        else stats.textOnly++;
+      } else {
+        stats.textOnly++;
+      }
+    }
+    return stats;
+  });
+
   // IPC: 清空数据库
   ipcMain.handle("LiteLoader.anti_recall.clearDb", async (event, message) => {
     dialog

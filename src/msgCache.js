@@ -1,8 +1,21 @@
 // 消息缓存: msgFlow (短期) + recalledMsg (撤回专用)
+// 优化: Map 索引 O(1) 查找 + 数量上限 + id 统一为 string
 const database = require("./database.js");
 
-var msgFlow = [];
-var recalledMsg = [];
+// 统一 id 为 string, 避免 number/string 混用导致的查找失败
+// 空字符串也返回 null (truthy false, 后续判断更安全)
+function normalizeId(id) {
+  if (id === null || id === undefined || id === "") return null;
+  return String(id);
+}
+
+// msgFlow: 短期缓存 (maxMsgSaveLimit 上限, 默认 10000)
+// recalledMsg: 撤回专用缓存 (无上限, 但配合 db 使用)
+var msgFlow = []; // Array<{id, sender, msg}>
+var msgFlowIndex = new Map(); // id -> index in msgFlow (O(1) 查找)
+var recalledMsg = []; // Array<{id, sender, msg}>
+var recalledIndex = new Set(); // id 集合 (O(1) 查找)
+
 var outputFn = console.log;
 var configGetter = null;
 
@@ -16,64 +29,114 @@ function cfg() {
 
 function cacheIncomingMsg(msg) {
   if (msg == null || msg.msgId === undefined || msg.msgId === null) return;
-  var msgId = msg.msgId;
+  var msgId = normalizeId(msg.msgId);
+  if (msgId == null) return;
 
-  var idx = msgFlow.findIndex((i) => i.id == msgId);
-  var rec = { id: msgId, sender: msg.peerUid, msg: msg };
-  if (idx == -1) msgFlow.push(rec);
-  else msgFlow[idx] = rec;
+  // 已存在就更新 (msg 可能有新字段)
+  var existingIdx = msgFlowIndex.get(msgId);
+  if (existingIdx !== undefined && existingIdx < msgFlow.length && msgFlow[existingIdx].id === msgId) {
+    msgFlow[existingIdx] = { id: msgId, sender: msg.peerUid, msg: msg };
+    return;
+  }
 
+  // 新增
+  msgFlow.push({ id: msgId, sender: msg.peerUid, msg: msg });
+  msgFlowIndex.set(msgId, msgFlow.length - 1);
+
+  // 上限控制
   var c = cfg();
   var lim = c.maxMsgSaveLimit || 10000;
   var del = c.deleteMsgCountPerTime || 500;
   if (msgFlow.length > lim) {
-    msgFlow.splice(0, msgFlow.length - lim);
+    // 批量删除头部 (最老的消息), 避免重建全量索引
+    var removeCount = Math.min(del, msgFlow.length - lim);
+    var removed = msgFlow.splice(0, removeCount);
+    for (var r of removed) {
+      msgFlowIndex.delete(r.id);
+    }
+    // 只更新受影响的索引 (splice 后, 原 [removeCount, len) 的下标都减 removeCount)
+    var newIndex = new Map();
+    for (var i = 0; i < msgFlow.length; i++) {
+      newIndex.set(msgFlow[i].id, i);
+    }
+    msgFlowIndex = newIndex;
   }
 }
 
 // 三级查找: recalledMsg -> msgFlow -> db
+// 返回 { id, sender, msg } 或 null
 function findOriginalMsgSync(msgId) {
-  var fromRecalled = recalledMsg.find((i) => i.id == msgId);
-  if (fromRecalled != null) return fromRecalled;
-  var fromFlow = msgFlow.find((i) => i.id == msgId);
-  if (fromFlow != null) {
-    recalledMsg.push(fromFlow);
-    if (cfg().saveDb) database.put(msgId, fromFlow);
-    return fromFlow;
+  var id = normalizeId(msgId);
+  if (id == null) return null;
+
+  // 1. 先从已撤回缓存找
+  if (recalledIndex.has(id)) {
+    return recalledMsg.find((i) => i.id === id);
   }
+
+  // 2. 再从短期缓存找
+  var idx = msgFlowIndex.get(id);
+  if (idx !== undefined && idx < msgFlow.length && msgFlow[idx].id === id) {
+    var found = msgFlow[idx];
+    // 提升到撤回缓存
+    if (!recalledIndex.has(id)) {
+      recalledMsg.push(found);
+      recalledIndex.add(id);
+      if (cfg().saveDb) database.put(id, found);
+    }
+    return found;
+  }
+
   return null;
 }
 
 async function findOriginalMsg(msgId) {
   var hit = findOriginalMsgSync(msgId);
   if (hit != null) return hit;
-  var dbMsg = await database.get(msgId);
+  var id = normalizeId(msgId);
+  var dbMsg = await database.get(id);
   if (dbMsg != null) {
-    recalledMsg.push(dbMsg);
+    if (!recalledIndex.has(id)) {
+      recalledMsg.push(dbMsg);
+      recalledIndex.add(id);
+    }
     return dbMsg;
   }
   return null;
 }
 
 function handleRecallEventSync(msgId) {
-  var inRecalled = recalledMsg.find((i) => i.id == msgId);
-  if (inRecalled == null) {
-    var fromFlow = msgFlow.find((i) => i.id == msgId);
-    if (fromFlow != null) {
-      recalledMsg.push(fromFlow);
-      if (cfg().saveDb) database.put(msgId, fromFlow);
-      inRecalled = fromFlow;
-    }
+  var id = normalizeId(msgId);
+  if (id == null) return null;
+
+  // 已撤回过
+  if (recalledIndex.has(id)) {
+    return recalledMsg.find((i) => i.id === id);
   }
-  return inRecalled != null ? inRecalled : null;
+
+  // 从 msgFlow 提升到 recalledMsg
+  var idx = msgFlowIndex.get(id);
+  if (idx !== undefined && idx < msgFlow.length && msgFlow[idx].id === id) {
+    var found = msgFlow[idx];
+    recalledMsg.push(found);
+    recalledIndex.add(id);
+    if (cfg().saveDb) database.put(id, found);
+    return found;
+  }
+
+  return null;
 }
 
 async function handleRecallEvent(msgId) {
   var hit = handleRecallEventSync(msgId);
   if (hit != null) return hit;
-  var dbMsg = await database.get(msgId);
+  var id = normalizeId(msgId);
+  var dbMsg = await database.get(id);
   if (dbMsg != null) {
-    recalledMsg.push(dbMsg);
+    if (!recalledIndex.has(id)) {
+      recalledMsg.push(dbMsg);
+      recalledIndex.add(id);
+    }
     return dbMsg;
   }
   return null;
@@ -83,10 +146,13 @@ function getRecalledMsgList() {
   return recalledMsg;
 }
 
+// 获取已撤回消息的 id 列表
+// peer == null: 返回所有
+// peer != null: 返回 sender 匹配的 (包括 sender 为 null 的兜底)
 function getRecalledIds(peer) {
   if (peer == null) return recalledMsg.map((i) => i.id);
   return recalledMsg
-    .filter((i) => i.sender != null && i.sender == peer)
+    .filter((i) => i.sender == null || i.sender === peer)
     .map((i) => i.id);
 }
 
@@ -96,8 +162,10 @@ async function preloadFromDb() {
     var items = await database.loadAll();
     var count = 0;
     for (var v of items) {
-      if (!recalledMsg.some((i) => i.id == v.id)) {
-        recalledMsg.push(v);
+      var id = normalizeId(v.id);
+      if (id != null && !recalledIndex.has(id)) {
+        recalledMsg.push({ id: id, sender: v.sender, msg: v.msg });
+        recalledIndex.add(id);
         count++;
       }
     }
@@ -109,18 +177,50 @@ async function preloadFromDb() {
   }
 }
 
+// 撤回时序竞态修复: 撤回在消息本体前到达时, 记录下来等消息到了再恢复
+var pendingRecallQueue = new Map(); // id -> { timestamp, revokeElement }
+var PENDING_RECALL_TTL = 60000; // 1分钟内的撤回等待消息本体
+
+function addPendingRecall(msgId, revokeElement) {
+  var id = normalizeId(msgId);
+  if (id == null) return;
+  // 清理过期的
+  var now = Date.now();
+  for (var [k, v] of pendingRecallQueue) {
+    if (now - v.timestamp > PENDING_RECALL_TTL) {
+      pendingRecallQueue.delete(k);
+    }
+  }
+  pendingRecallQueue.set(id, { timestamp: now, revokeElement: revokeElement });
+}
+
+function checkPendingRecall(msgId) {
+  var id = normalizeId(msgId);
+  if (id == null) return null;
+  return pendingRecallQueue.get(id);
+}
+
+function removePendingRecall(msgId) {
+  var id = normalizeId(msgId);
+  if (id != null) pendingRecallQueue.delete(id);
+}
+
 function getMsgFlow() {
   return msgFlow;
 }
 
 function reset() {
   msgFlow = [];
+  msgFlowIndex.clear();
   recalledMsg = [];
+  recalledIndex.clear();
+  pendingRecallQueue.clear();
 }
 
 module.exports = {
   setOutput,
   setConfigGetter,
+  normalizeId,
   cacheIncomingMsg,
   findOriginalMsgSync,
   findOriginalMsg,
@@ -129,6 +229,9 @@ module.exports = {
   getRecalledMsgList,
   getRecalledIds,
   preloadFromDb,
+  addPendingRecall,
+  checkPendingRecall,
+  removePendingRecall,
   getMsgFlow,
   reset,
 };
