@@ -539,44 +539,34 @@ async function onLoad() {
     await patchCss();
   });
 
+  // 按优先级尝试所有可能的消息容器选择器, 命中第一个非灰条就返回
+  function findMsgContainer(msgId) {
+    // 1. 老版本消息容器
+    var el = document.getElementById(`${msgId}-msgContainerMsgContent`);
+    if (el && !el.classList.contains("gray-tip-message")) return { el: el, addNoMargin: false };
+    // 2. 新版本/卡片/Ark 共享容器
+    el = document.getElementById(`${msgId}-msgContent`);
+    if (el && !el.classList.contains("gray-tip-message")) {
+      return { el: el.parentElement, addNoMargin: true };
+    }
+    // 3. Unix-like 消息 ID 前缀
+    el = document.getElementById(`ml-${msgId}`)?.querySelector(".msg-content-container");
+    if (el && !el.classList.contains("gray-tip-message")) return { el: el.parentElement, addNoMargin: false };
+    // 4. Ark 专用容器
+    el = document.getElementById(`ark-msg-content-container_${msgId}`);
+    if (el && !el.classList.contains("gray-tip-message")) return { el: el.parentElement, addNoMargin: true };
+    // 5. 兜底: 列表项内任意内容容器
+    el = document.querySelector(`.ml-item[id='${msgId}'] .msg-content-container`);
+    if (el && !el.classList.contains("gray-tip-message")) return { el: el, addNoMargin: false };
+    return null;
+  }
+
   //消息更新回调
   anti_recall.recallTip(async (event, msgId) => {
-    console.log("[Anti-Recall]", "尝试反撤回消息ID", msgId);
-
-    var oldElement = document.getElementById(`${msgId}-msgContainerMsgContent`);
-
-    var newElement = document.getElementById(`${msgId}-msgContent`);
-
-    var unixElement = document
-      .getElementById(`ml-${msgId}`)
-      ?.querySelector(".msg-content-container");
-
-    var cardElement = document.getElementById(`${msgId}-msgContent`);
-
-    var arkElement = document.getElementById(
-      `ark-msg-content-container_${msgId}`
-    );
-
-    if (oldElement != null) {
-      if (oldElement.classList.contains("gray-tip-message")) return;
-      await appendRecalledTag(oldElement);
-    } else if (newElement != null) {
-      if (newElement.classList.contains("gray-tip-message")) return;
-      await appendRecalledTag(newElement.parentElement);
-    } else if (unixElement != null) {
-      if (unixElement.classList.contains("gray-tip-message")) return;
-      await appendRecalledTag(unixElement.parentElement);
-    } else if (cardElement != null) {
-      if (cardElement.classList.contains("gray-tip-message")) return;
-      cardElement.classList.add("recalledNoMargin");
-      await appendRecalledTag(cardElement.parentElement);
-    } else if (arkElement != null) {
-      if (arkElement.classList.contains("gray-tip-message")) return;
-      arkElement.classList.add("recalledNoMargin");
-      await appendRecalledTag(arkElement.parentElement);
-    } else{
-      var container = document.querySelector(`.ml-item[id='${msgId}'] .msg-content-container`);
-      if (container) await appendRecalledTag(container);
+    var found = findMsgContainer(msgId);
+    if (found) {
+      if (found.addNoMargin) found.el.classList.add("recalledNoMargin");
+      await appendRecalledTag(found.el);
     }
   });
   //消息列表更新回调
@@ -683,45 +673,17 @@ async function onLoad() {
       if (findMsgId != null) {
         var msgId = findMsgId;
         try {
-          var oldElement = el.querySelector(
-            `div[id='${msgId}-msgContainerMsgContent']`
-          );
-
-          var newElement = el.querySelector(`div[id='${msgId}-msgContent']`);
-
-          var unixElement = el
-            .querySelector(`div[id='ml-${msgId}']`)
-            ?.querySelector(".msg-content-container");
-
-          var cardElement = el.querySelector(`div[id='${msgId}-msgContent']`);
-
-          var arkElement = el.querySelector(
-            `div[id='ark-msg-content-container_${msgId}']`
-          );
-
-          if (oldElement != null) {
-            if (oldElement.classList.contains("gray-tip-message")) continue;
-            await appendRecalledTag(oldElement);
-          } else if (newElement != null) {
-            if (newElement.classList.contains("gray-tip-message")) continue;
-            await appendRecalledTag(newElement.parentElement);
-          } else if (unixElement != null) {
-            if (unixElement.classList.contains("gray-tip-message")) continue;
-            await appendRecalledTag(unixElement.parentElement);
-          } else if (cardElement != null) {
-            if (cardElement.classList.contains("gray-tip-message")) continue;
-            cardElement.classList.add("recalledNoMargin");
-            await appendRecalledTag(cardElement.parentElement);
-          } else if (arkElement != null) {
-            if (arkElement.classList.contains("gray-tip-message")) continue;
-            arkElement.classList.add("recalledNoMargin");
-            await appendRecalledTag(arkElement.parentElement);
-          }
-          else{
-	          var container = el.querySelector('.msg-content-container');
-		  if (!container) container = el.querySelector('.file-message--content');
-		  if (!container) container = el.querySelector('.msg-preview');
-		  if (container) await appendRecalledTag(container);
+          // 复用 findMsgContainer (来自 recallTip 回调)
+          var found = findMsgContainer(msgId);
+          if (found) {
+            if (found.addNoMargin) found.el.classList.add("recalledNoMargin");
+            await appendRecalledTag(found.el);
+          } else {
+            // 列表项兜底
+            var container = el.querySelector(".msg-content-container") ||
+                            el.querySelector(".file-message--content") ||
+                            el.querySelector(".msg-preview");
+            if (container) await appendRecalledTag(container);
           }
         } catch (e) {
           console.log("[Anti-Recall]", "反撤回消息时出错", e);
