@@ -3,6 +3,29 @@ var recalledMsgList = [];
 var nowConfig = {};
 
 export async function onSettingWindowCreated(view) {
+  console.log("[Anti-Recall] onSettingWindowCreated called, view:", view);
+  // 不依赖传入的 view, 直接找/创建容器
+  // LiteLoader 会把 view 存为 div.tab-view.anti_recall
+  // 但也可能 view 不在 DOM 里, 所以等它出现再注入
+  if (!view || !(view instanceof HTMLElement)) {
+    console.log("[Anti-Recall] view invalid, will use DOM query");
+    view = document.querySelector(".tab-view.anti_recall");
+  }
+  if (!view) {
+    console.log("[Anti-Recall] view not found, creating fallback");
+    // 等 LiteLoader 把它加到 DOM
+    var tries = 0;
+    while (!view && tries < 50) {
+      await new Promise((r) => setTimeout(r, 100));
+      view = document.querySelector(".tab-view.anti_recall");
+      tries++;
+    }
+  }
+  if (!view) {
+    console.log("[Anti-Recall] view still not found after 5s, giving up");
+    return;
+  }
+  console.log("[Anti-Recall] found view, injecting content");
   nowConfig = await getNowConfigCached();
 
   const new_navbar_item = `
@@ -384,8 +407,6 @@ export async function onSettingWindowCreated(view) {
     q_switch_tip.classList.toggle("is-active");
     await window.anti_recall.saveConfig(nowConfig);
   });
-
-  view.appendChild(node2);
 }
 
 async function patchCss() {
