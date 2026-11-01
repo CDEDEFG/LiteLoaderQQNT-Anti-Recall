@@ -585,6 +585,27 @@ async function onLoad() {
     await render();
   });
 
+  // 周期性拉取撤回列表并补标 —— 解决QQ SPA切会话/重渲染后标记丢失导致撤回显示为灰条
+  // 只在聊天区域存在时周期拉取, 每500ms一次, 拉到新数据就 render 补标
+  var pullTimer = null;
+  function startPullLoop() {
+    if (pullTimer != null) return;
+    pullTimer = setInterval(async () => {
+      try {
+        if (typeof anti_recall.requestRecallList !== "function") return;
+        var list = await anti_recall.requestRecallList();
+        if (Array.isArray(list) && list.length > 0) {
+          // 合并: 之前推送的 + 主进程存的
+          var merged = Array.from(new Set([...(recalledMsgList || []), ...list]));
+          if (merged.length !== (recalledMsgList || []).length) {
+            recalledMsgList = merged;
+            await render();
+          }
+        }
+      } catch (e) {}
+    }, 500);
+  }
+
   await patchCss();
 
   var observerRendering = false;
@@ -615,6 +636,7 @@ async function onLoad() {
     if (document.querySelector(".ml-list.list")) {
       clearInterval(finder);
       console.log("[Anti-Recall]", "检测到聊天区域，已在当前页面加载反撤回");
+      startPullLoop(); // 开启周期性补标
       const targetNode = document.querySelector(".ml-list.list");
       const config = {
         attributes: false,

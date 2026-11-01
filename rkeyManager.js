@@ -65,12 +65,26 @@ class RkeyManager {
     return now > this.rkeyData.expired_time;
   }
 
+  // 不同 rkey 服务返回字段名可能不同 (snake_case / camelCase), 统一归一化
+  normalizeRkeyData(data) {
+    if (!data) return null;
+    const group = data.group_rkey || data.groupRkey || data.nt_rkey || "";
+    const priv = data.private_rkey || data.privateRkey || data.friend_rkey || "";
+    if (!group && !priv) return null;
+    return {
+      group_rkey: group,
+      private_rkey: priv,
+      expired_time: data.expired_time || data.expiredTime || Math.floor(Date.now() / 1000) + 3600,
+    };
+  }
+
   async refreshRkey() {
     let lastErr = null;
     for (const url of this.serverUrls) {
       try {
-        const data = await this.fetchServerRkey(url);
-        if (data && (data.group_rkey || data.private_rkey)) {
+        const raw = await this.fetchServerRkey(url);
+        const data = this.normalizeRkeyData(raw);
+        if (data) {
           this.rkeyData = data;
           return;
         }

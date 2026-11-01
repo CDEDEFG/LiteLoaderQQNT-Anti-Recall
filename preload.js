@@ -17,5 +17,7 @@ contextBridge.exposeInMainWorld("anti_recall", {
         ipcRenderer.on(
             "LiteLoader.anti_recall.mainWindow.recallTipList",
             callback
-        )
+        ),
+    requestRecallList: () =>
+        ipcRenderer.invoke("LiteLoader.anti_recall.getRecallList")
 });

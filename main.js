@@ -117,6 +117,11 @@ async function onLoad() {
     );
   });
 
+  // 渲染层主动拉取已撤回 消息id 列表 (用于SPA切换后补标)
+  ipcMain.handle("LiteLoader.anti_recall.getRecallList", async () =>
+    recalledMsg.map((i) => i.id)
+  );
+
   ipcMain.handle("LiteLoader.anti_recall.clearDb", async (event, message) => {
     dialog
       .showMessageBox({
@@ -156,6 +161,36 @@ async function onLoad() {
 
 var msgFlow = [];
 var recalledMsg = [];
+
+// 后台下载队列: 撤回消息的资源下载不阻塞 send 主链路
+// 主链路只做内存级别的消息内容替换, 图片/语音/视频的下载异步执行
+var downloadQueue = [];
+var downloadRunning = false;
+
+function queueBackgroundDownload(savedMsgs) {
+  if (!Array.isArray(savedMsgs)) savedMsgs = [savedMsgs];
+  for (const s of savedMsgs) {
+    if (s && s.msg) downloadQueue.push(s.msg);
+  }
+  if (!downloadRunning) drainDownloadQueue();
+}
+
+async function drainDownloadQueue() {
+  if (downloadRunning) return;
+  downloadRunning = true;
+  try {
+    while (downloadQueue.length > 0) {
+      const msg = downloadQueue.shift();
+      try {
+        await imgDownloader.downloadPic(msg);
+      } catch (e) {
+        output("background download err:", e && e.message);
+      }
+    }
+  } finally {
+    downloadRunning = false;
+  }
+}
 
 function insertDb(msg) {
   if (db != null) {
@@ -228,7 +263,8 @@ function shouldIntercept(revokeElement) {
   );
 }
 
-// 撤回事件发生时: 通知渲染层 + 把消息移入专门的反撤回数组(必要时入库) + 下载图片
+// 撤回事件发生时: 通知渲染层 + 把消息移入专门的反撤回数组(必要时入库)
+// 下载扔后台队列, 不阻塞 send 分发, 避免撤回时卡顿
 async function handleRecallEvent(msgId) {
   sendChatWindowsMessage("LiteLoader.anti_recall.mainWindow.recallTip", msgId);
 
@@ -251,7 +287,7 @@ async function handleRecallEvent(msgId) {
   }
 
   if (inRecalled != null && inRecalled.msg != null) {
-    await imgDownloader.downloadPic(inRecalled.msg);
+    queueBackgroundDownload(inRecalled); // 不 await — 后台执行
   }
 
   return inRecalled != null;
@@ -276,7 +312,7 @@ async function findOriginalMsg(msgId) {
 }
 
 // 把撤回提示对象原位替换为原消息内容 (用于全量列表/历史拉取场景)
-// 返回是否成功恢复
+// 主链路只做同步内容替换, 不下载资源 — 下载在后台队列执行
 async function restoreRecallTipInPlace(recallTipMsg) {
   var currMsgId = recallTipMsg.msgId;
   var saved = await findOriginalMsg(currMsgId);
@@ -284,7 +320,8 @@ async function restoreRecallTipInPlace(recallTipMsg) {
 
   let msg = Object.assign({}, saved.msg); // 克隆
   msg.isOnlineMsg = true;
-  await imgDownloader.downloadPic(msg);
+  // 不阻塞主链路; 下载到后台队列
+  queueBackgroundDownload(saved);
   output("Detected recall, intercepted and recovered msgId=" + currMsgId);
 
   // 撤回提示消息中一些对象存在特殊属性，保留这些特殊属性以兼容某些情况不显示消息的问题
@@ -418,11 +455,7 @@ function scanAndProcess(node, context, depth, seen) {
     if (isIncomingMsgChannel(node.cmdName)) {
       context.isIncoming = true;
     }
-    if (node.cmdName.indexOf("onProfileDetailInfoChanged") != -1) {
-      try {
-        context.myUid = node.payload.info.uid;
-      } catch (e) {}
-    }
+    // onProfileDetailInfoChanged 等事件不需要处理, 撤回拦截用 revokeElement.isSelfOperate 判断即可
   }
 
   // 携带 msgList 的容器
@@ -492,7 +525,6 @@ function makePatchedSend(wc, original_send) {
           cmdNameOwner: null,
           isIncremental: false,
           isIncoming: false,
-          myUid: null,
         };
 
         // args[0] 通常是 {type:"request", eventName:"ns-ntApi-2"}, args[1] 才是 {cmdName, cmdType, payload}
