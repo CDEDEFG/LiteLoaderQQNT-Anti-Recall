@@ -17,7 +17,8 @@ const http = require("http");
 const { URL } = require("url");
 
 // ============================================================
-// 消息类型分级
+// 消息类型分级 - v0.7.1 策略调整
+// 核心资源(图片/视频/合并转发)必须完整恢复, 反风控靠伪装而非跳过
 // ============================================================
 
 const MSG_TIER = {
@@ -29,16 +30,16 @@ const MSG_TIER = {
   MARKDOWN: 1,    // Markdown
   GRAY_TIP: 1,    // 撤回灰条 (识别用)
 
-  // TIER 2: 被动恢复 (用户看过才下载)
+  // TIER 2: 核心资源, 必须恢复, 用反伪装下载
   PIC: 2,         // 图片
   VIDEO: 2,       // 视频
   PTT: 2,         // 语音
   FILE: 2,        // 文件
-  MARKET_FACE: 2, // 大表情
 
-  // TIER 3: 默认不恢复资源 (结构复杂/特征明显)
-  MULTI_FORWARD: 3, // 合并转发
-  LIGHT_APP: 3,     // 小程序
+  // TIER 3: 需要特殊处理
+  MULTI_FORWARD: 3, // 合并转发 → 强制递归下载所有子消息
+  LIGHT_APP: 3,     // 小程序 → 只恢复图标/首图
+  MARKET_FACE: 3,   // 大表情 → 本地缓存优先
 };
 
 // 识别消息元素类型
@@ -148,24 +149,23 @@ function hasUserSeenMsg(msgItem) {
 }
 
 // 判断是否应该下载该消息的资源
+// v0.7.1: 核心资源(图片/视频/语音/文件/合并转发)必须恢复, 不再跳过
 function shouldDownloadResources(msgItem) {
   if (!msgItem || !msgItem.elements) return false;
   var cls = classifyElements(msgItem.elements);
   // TIER 1: 零网络请求
   if (cls.tier === 1) return false;
-  // TIER 3: 默认不恢复 (合并转发/小程序)
-  if (cls.tier === 3) return false;
-  // TIER 2: 被动恢复 (用户看过才下载)
-  if (cls.tier === 2) return hasUserSeenMsg(msgItem);
-  return false;
+  // TIER 2/3: 核心资源, 必须恢复
+  return true;
 }
 
 // 判断是否应该下载特定元素
+// v0.7.1: 图片/视频/语音/文件 全部恢复; 合并转发由 imgDownloader 递归处理
 function shouldDownloadElement(element, msgItem) {
   if (!element) return false;
-  // 图片/视频/语音/文件: 用户看过才下载
+  // 图片/视频/语音/文件: 必须恢复
   if (element.picElement || element.videoElement || element.pttElement || element.fileElement) {
-    return hasUserSeenMsg(msgItem);
+    return true;
   }
   // 大表情: 本地缓存优先, 不主动从 CDN 拉
   if (element.marketFaceElement) return false;
@@ -178,7 +178,7 @@ function shouldDownloadElement(element, msgItem) {
 
 var rateLimiter = {
   windowMs: 60000,
-  maxPerWindow: 20, // 每分钟最多 20 次下载 (正常用户浏览速度)
+  maxPerWindow: 120, // 每分钟最多 120 次 (正常文件下载速度, 不是浏览速度)
   timestamps: [],
 
   canProceed: function () {

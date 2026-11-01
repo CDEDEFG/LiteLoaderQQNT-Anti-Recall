@@ -57,6 +57,7 @@ class ImgDownloader {
       "https://llob.linyuchen.net/rkey",
     ]);
     this.enabled = true;
+    this.urlHijackMap = new Map(); // msgId -> { picUrls: [...], videoUrls: [...] }
     this.snapshotDir = path.join(
       global.LiteLoader && LiteLoader.path && LiteLoader.path.data
         ? LiteLoader.path.data
@@ -64,6 +65,74 @@ class ImgDownloader {
       "anti_recall",
       "recalled_snapshots"
     );
+  }
+
+  // 劫持图片 URL: 把被撤回图片的本地路径替换为 CDN 直链
+  // QQ 渲染层会自己从 CDN 拉取, 插件不直接发请求
+  hijackMediaUrls(msgItem) {
+    if (!msgItem || !msgItem.msgId || !msgItem.elements) return;
+    var hijacked = { pics: [], videos: [] };
+    for (var el of msgItem.elements) {
+      if (el?.picElement) {
+        var pic = el.picElement;
+        var cdnUrl = this.buildPicCdnUrl(pic);
+        if (cdnUrl) {
+          // 保存劫持映射, QQ 请求这个 URL 时由 protocol handler 拦截
+          hijacked.pics.push({
+            originalPath: pic.sourcePath,
+            cdnUrl: cdnUrl,
+          });
+          // 直接把 originImageUrl 改成完整 CDN 地址
+          if (!pic.originImageUrl || !pic.originImageUrl.startsWith("http")) {
+            pic.originImageUrl = cdnUrl;
+          }
+        }
+      } else if (el?.videoElement) {
+        var video = el.videoElement;
+        var vUrl = this.buildVideoCdnUrl(video);
+        if (vUrl) {
+          hijacked.videos.push({
+            originalPath: video.filePath,
+            cdnUrl: vUrl,
+          });
+        }
+      }
+    }
+    if (hijacked.pics.length > 0 || hijacked.videos.length > 0) {
+      this.urlHijackMap.set(String(msgItem.msgId), hijacked);
+    }
+  }
+
+  // 构造图片 CDN 直链 (用于劫持, QQ 自己会去拉)
+  buildPicCdnUrl(pic) {
+    if (!pic) return "";
+    // 已有完整 URL 直接用
+    if (pic.originImageUrl && pic.originImageUrl.startsWith("http")) {
+      return pic.originImageUrl;
+    }
+    var url = pic.originImageUrl || "";
+    var md5 = (pic.md5HexStr || "").toUpperCase();
+    // 有路径但没有域名 → 补全
+    if (url && !url.startsWith("http")) {
+      // 已有 rkey 的新格式
+      if (url.includes("rkey=")) return IMAGE_HTTP_HOST_NT + url;
+      // 老格式
+      if (url.startsWith("/")) return IMAGE_HTTP_HOST + url;
+    }
+    // 只有 md5 → 拼接
+    if (md5) return `${IMAGE_HTTP_HOST_NT}/gchatpic_new/0/0-0-${md5}/0`;
+    return "";
+  }
+
+  // 构造视频 CDN 直链
+  buildVideoCdnUrl(video) {
+    if (!video) return "";
+    if (video.url && video.url.startsWith("http")) return video.url;
+    var md5 = (video.md5HexStr || video.md5 || "").toUpperCase();
+    if (md5) {
+      return `${IMAGE_HTTP_HOST_NT}/download?appid=1407&fileid=vid_${md5}`;
+    }
+    return "";
   }
 
   setEnabled(v) {
@@ -278,19 +347,20 @@ class ImgDownloader {
     }
   }
 
-  // ##### 统一入口: 一条消息的全部媒体元素下载 (反风控版) #####
-  // 按消息类型分级处理:
+  // ##### 统一入口: 一条消息的全部媒体元素下载 (反风控版 v0.7.1) #####
+  // 策略: 核心资源(图片/视频/语音/文件/合并转发)必须完整恢复
   //   TIER 1 (文本/表情/引用/ARK/Markdown): 零网络请求, 纯内存恢复
-  //   TIER 2 (图片/视频/语音/文件): 仅当用户已看过该消息才被动恢复
-  //   TIER 3 (合并转发/小程序): 默认不恢复资源 (结构复杂/特征明显)
+  //   TIER 2 (图片/视频/语音/文件): URL 劫持 + 伪装下载, 必须恢复
+  //   TIER 3 (合并转发): 强制递归下载所有子消息, 必须恢复
   async downloadAllElementsInMsg(msgItem) {
     if (!this.enabled) return;
     this.snapshotMsg(msgItem); // 恢复底线: 元素全量快照 (纯本地, 无网络)
 
     if (!msgItem || !msgItem.elements || !Array.isArray(msgItem.elements)) {
       if (msgItem?.multiForwardMsgElement) {
-        // TIER 3: 合并转发, 只快照不下载
-        output("multiForward: snapshot only (TIER 3, no resource download)");
+        // TIER 3: 合并转发, 强制递归
+        output("TIER 3 multiForward: force recursive download");
+        await this.downloadMultiForwardElement(msgItem.multiForwardMsgElement, msgItem);
       }
       return;
     }
@@ -302,29 +372,26 @@ class ImgDownloader {
     // TIER 1: 零网络请求
     if (cls.tier === 1) {
       output("TIER 1 (text/face/reply/ark): zero network requests");
-      return; // 纯文本/表情/引用等, 不需要下载任何资源
-    }
-
-    // TIER 3: 合并转发/小程序, 跳过资源下载
-    if (cls.tier === 3) {
-      output("TIER 3 (multiForward/lightApp): skip resource download");
       return;
     }
 
-    // TIER 2: 被动恢复 (用户看过才下载)
-    if (!stealth.shouldDownloadResources(msgItem)) {
-      output("TIER 2 passive: user hasn't seen this msg yet, skip download");
-      return;
-    }
+    // TIER 2/3: 核心资源, 必须恢复
+    // 先尝试 URL 劫持 (图片/视频 → CDN 直链, QQ 自己拉)
+    this.hijackMediaUrls(msgItem);
 
-    // 执行下载
+    // 然后伪装下载 (备份到本地, 防止 CDN 过期)
     for (const el of msgItem.elements) {
       try {
         if (el?.picElement) await this.downloadPicElement(el.picElement, msgItem);
         else if (el?.pttElement) await this.downloadPttElement(el.pttElement, msgItem);
         else if (el?.videoElement) await this.downloadVideoElement(el.videoElement, msgItem);
         else if (el?.fileElement) await this.downloadFileElement(el.fileElement, msgItem);
-        // 大表情/小程序/合并转发: 不主动下载
+        else if (el?.multiForwardMsgElement) {
+          // TIER 3: 合并转发, 强制递归下载所有子消息
+          output("TIER 3 multiForward: force recursive download of sub-msgs");
+          await this.downloadMultiForwardElement(el.multiForwardMsgElement, msgItem);
+        }
+        // 大表情/小程序: 不主动下载
       } catch (e) {
         output("element download err:", e && e.message);
       }
