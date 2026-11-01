@@ -92,6 +92,71 @@ class NtSnapshotManager {
     if (cmdName.indexOf("Album") !== -1 || cmdName.indexOf("Photo") !== -1) {
       this.handleGroupAlbum(cmdName, payload);
     }
+    // 群精华消息 (撤回精华会消失, 快照可回看历史)
+    if (cmdName.indexOf("GroupEssence") !== -1 || cmdName.indexOf("onGroupEssenceMsgChanged") !== -1) {
+      this.handleGroupEssence(cmdName, payload);
+    }
+    // 群作业 (GroupSchoolHomework / onGroupHomeworkChanged)
+    if (cmdName.indexOf("Homework") !== -1 || cmdName.indexOf("SchoolHomeWork") !== -1) {
+      this.handleGroupHomework(cmdName, payload);
+    }
+    // 群投票 (GroupPollVote)
+    if (cmdName.indexOf("GroupPoll") !== -1 || cmdName.indexOf("onGroupPoll") !== -1) {
+      this.handleGroupPoll(cmdName, payload);
+    }
+  }
+
+  handleGroupEssence(cmdName, payload) {
+    try {
+      if (!payload) return;
+      const items = payload.essenceList || payload.msgs || [payload];
+      for (const it of Array.isArray(items) ? items : []) {
+        if (!it || typeof it !== "object") continue;
+        const entry = {
+          type: "group_essence",
+          time: new Date().toISOString(),
+          cmdName,
+          groupCode: it.groupCode || it.groupUin || "",
+          msgSeq: it.msgSeq || "",
+          raw: it,
+        };
+        indexFile(entry);
+      }
+    } catch (e) {}
+  }
+
+  handleGroupHomework(cmdName, payload) {
+    try {
+      if (!payload) return;
+      const items = payload.homeworkList || [payload];
+      for (const it of Array.isArray(items) ? items : []) {
+        if (!it || typeof it !== "object") continue;
+        indexFile({
+          type: "group_homework",
+          time: new Date().toISOString(),
+          cmdName,
+          groupCode: it.groupCode || "",
+          raw: it,
+        });
+      }
+    } catch (e) {}
+  }
+
+  handleGroupPoll(cmdName, payload) {
+    try {
+      if (!payload) return;
+      const items = payload.pollList || [payload];
+      for (const it of Array.isArray(items) ? items : []) {
+        if (!it || typeof it !== "object") continue;
+        indexFile({
+          type: "group_poll",
+          time: new Date().toISOString(),
+          cmdName,
+          groupCode: it.groupCode || "",
+          raw: it,
+        });
+      }
+    } catch (e) {}
   }
 
   handleGroupNotice(cmdName, payload) {
