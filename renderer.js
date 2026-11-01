@@ -586,11 +586,13 @@ async function onLoad() {
   });
 
   // 周期性拉取撤回列表并补标 —— 解决QQ SPA切会话/重渲染后标记丢失导致撤回显示为灰条
-  // 只在聊天区域存在时周期拉取, 每500ms一次, 拉到新数据就 render 补标
+  // 聊天区域存在时拉取, 500ms 太频繁改为 1s; 页面隐藏/失焦时暂停, 恢复时重新启动
   var pullTimer = null;
   function startPullLoop() {
     if (pullTimer != null) return;
     pullTimer = setInterval(async () => {
+      // 页面不可见时跳过本次 (空转浪费)
+      if (document.hidden) return;
       try {
         if (typeof anti_recall.requestRecallList !== "function") return;
         var list = await anti_recall.requestRecallList();
@@ -603,7 +605,27 @@ async function onLoad() {
           }
         }
       } catch (e) {}
-    }, 500);
+    }, 1000); // 1 秒一次足够, SPA DOM 重建不会这么快, 但 CPU 可省一半
+  }
+  // 从隐藏恢复时立即拉一次, 避免卡顿等下一轮
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && pullTimer != null) {
+        (async () => {
+          try {
+            if (typeof anti_recall.requestRecallList !== "function") return;
+            var list = await anti_recall.requestRecallList();
+            if (Array.isArray(list) && list.length > 0) {
+              var merged = Array.from(new Set([...(recalledMsgList || []), ...list]));
+              if (merged.length > (recalledMsgList || []).length) {
+                recalledMsgList = merged;
+                await render();
+              }
+            }
+          } catch (e) {}
+        })();
+      }
+    });
   }
 
   await patchCss();

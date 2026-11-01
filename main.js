@@ -172,7 +172,12 @@ function queueBackgroundDownload(savedMsgs) {
   for (const s of savedMsgs) {
     if (s && s.msg) downloadQueue.push(s.msg);
   }
-  if (!downloadRunning) drainDownloadQueue();
+  if (!downloadRunning) {
+    // 彻底脱离当前调用栈, 保证撤回分发主链路立即返回
+    setImmediate(() => {
+      drainDownloadQueue().catch((e) => output("drain err:", e && e.message));
+    });
+  }
 }
 
 async function drainDownloadQueue() {
@@ -264,37 +269,39 @@ function shouldIntercept(revokeElement) {
 }
 
 // 撤回事件发生时: 通知渲染层 + 把消息移入专门的反撤回数组(必要时入库)
-// 下载扔后台队列, 不阻塞 send 分发, 避免撤回时卡顿
-async function handleRecallEvent(msgId) {
-  sendChatWindowsMessage("LiteLoader.anti_recall.mainWindow.recallTip", msgId);
-
+// 快速路径同步, 慢速路径异步; 下载扔后台队列
+function handleRecallEventSync(msgId) {
   var inRecalled = recalledMsg.find((i) => i.id == msgId);
   if (inRecalled == null) {
     var fromFlow = msgFlow.find((i) => i.id == msgId);
     if (fromFlow != null) {
       recalledMsg.push(fromFlow);
-      if (nowConfig.saveDb) {
-        insertDb(fromFlow);
-      }
+      if (nowConfig.saveDb) insertDb(fromFlow);
       inRecalled = fromFlow;
-    } else {
-      var dbMsg = await getMsgById(msgId);
-      if (dbMsg != null) {
-        recalledMsg.push(dbMsg);
-        inRecalled = dbMsg;
-      }
     }
   }
-
   if (inRecalled != null && inRecalled.msg != null) {
-    queueBackgroundDownload(inRecalled); // 不 await — 后台执行
+    queueBackgroundDownload(inRecalled);
   }
-
   return inRecalled != null;
 }
 
+async function handleRecallEvent(msgId) {
+  sendChatWindowsMessage("LiteLoader.anti_recall.mainWindow.recallTip", msgId);
+  if (handleRecallEventSync(msgId)) return true;
+  // 内存未命中, 再查 db (仅当开启 saveDb 时才有意义)
+  var dbMsg = await getMsgById(msgId);
+  if (dbMsg != null) {
+    recalledMsg.push(dbMsg);
+    queueBackgroundDownload(dbMsg);
+    return true;
+  }
+  return false;
+}
+
 // 三级查找撤回消息原文: recalledMsg -> msgFlow -> db
-async function findOriginalMsg(msgId) {
+// 快速路径同步返回 (recalledMsg/msgFlow 命中), 慢速路径(db)异步
+function findOriginalMsgSync(msgId) {
   var fromRecalled = recalledMsg.find((i) => i.id == msgId);
   if (fromRecalled != null) return fromRecalled;
   var fromFlow = msgFlow.find((i) => i.id == msgId);
@@ -303,6 +310,12 @@ async function findOriginalMsg(msgId) {
     if (nowConfig.saveDb) insertDb(fromFlow);
     return fromFlow;
   }
+  return null;
+}
+
+async function findOriginalMsg(msgId) {
+  var hit = findOriginalMsgSync(msgId);
+  if (hit != null) return hit;
   var dbMsg = await getMsgById(msgId);
   if (dbMsg != null) {
     recalledMsg.push(dbMsg);
@@ -312,12 +325,29 @@ async function findOriginalMsg(msgId) {
 }
 
 // 把撤回提示对象原位替换为原消息内容 (用于全量列表/历史拉取场景)
-// 主链路只做同步内容替换, 不下载资源 — 下载在后台队列执行
+// 快速路径: 优先同步内存查找, 找不到才走异步 db; 下载资源在后台队列执行
+function restoreRecallTipInPlaceSync(recallTipMsg) {
+  var currMsgId = recallTipMsg.msgId;
+  var saved = findOriginalMsgSync(currMsgId);
+  if (saved == null) return false;
+  if (!(saved.msg instanceof Object)) return false;
+  doRestore(recallTipMsg, saved);
+  return true;
+}
+
 async function restoreRecallTipInPlace(recallTipMsg) {
+  // 先试同步
+  if (restoreRecallTipInPlaceSync(recallTipMsg)) return true;
+  // 同步未命中再走异步 db
   var currMsgId = recallTipMsg.msgId;
   var saved = await findOriginalMsg(currMsgId);
   if (saved == null || !(saved.msg instanceof Object)) return false;
+  doRestore(recallTipMsg, saved);
+  return true;
+}
 
+function doRestore(recallTipMsg, saved) {
+  var currMsgId = recallTipMsg.msgId;
   let msg = Object.assign({}, saved.msg); // 克隆
   msg.isOnlineMsg = true;
   // 不阻塞主链路; 下载到后台队列
@@ -407,8 +437,13 @@ async function processMsgList(msgList, removeUnrecovered) {
 }
 
 function recallTipListFor(peer) {
+  // peer 为 null/undefined 时, 返回全部 (初次推送/兜底场景)
+  if (peer == null) {
+    return recalledMsg.map((i) => i.id);
+  }
+  // 精确匹配 peer; sender 未记录的不发到这里 (避免无关窗口重复渲染)
   return recalledMsg
-    .filter((i) => i.sender == peer || i?.sender == null)
+    .filter((i) => i.sender != null && i.sender == peer)
     .map((i) => i.id);
 }
 
@@ -651,6 +686,14 @@ function tryPatchWindowSend(window) {
 }
 
 function sendChatWindowsMessage(message, ...args) {
+  // 清理已销毁的引用, 防止数组无限膨胀
+  mainWindowObjs = mainWindowObjs.filter((w) => {
+    try {
+      return w && !w.isDestroyed();
+    } catch (e) {
+      return false;
+    }
+  });
   for (var window of mainWindowObjs) {
     try {
       if (window.isDestroyed()) continue;
