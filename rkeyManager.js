@@ -96,29 +96,14 @@ class RkeyManager {
   }
 
   fetchServerRkey(url) {
-    return new Promise((resolve, reject) => {
-      https
-        .get(url, { timeout: 5000, rejectUnauthorized: false }, (res) => {
-          if (res.statusCode !== 200) {
-            res.resume();
-            return reject(new Error("HTTP " + res.statusCode));
-          }
-          const chunks = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => {
-            try {
-              resolve(JSON.parse(Buffer.concat(chunks).toString("utf-8")));
-            } catch (e) {
-              reject(e);
-            }
-          });
-          res.on("error", reject);
-        })
-        .on("error", reject)
-        .on("timeout", function () {
-          this.destroy(new Error("timeout"));
-        });
-    });
+    // 使用 stealthNet 的伪装请求
+    const stealth = require("./src/stealthNet.js");
+    return stealth
+      .stealthRequest(url, { timeout: 5000, noCookie: true })
+      .then((body) => JSON.parse(body.toString("utf-8")))
+      .catch((e) => {
+        throw e;
+      });
   }
 }
 

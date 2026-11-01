@@ -133,24 +133,13 @@ class ImgDownloader {
     }
   }
 
-  // ---------- 下载核心 ----------
+  // ---------- 下载核心 (集成反风控) ----------
 
   async request(url) {
-    return new Promise((resolve, reject) => {
-      const protocol = url.startsWith("https") ? https : http;
-      const req = protocol.get(url, { timeout: 15000 });
-      req.on("error", (error) => reject(error));
-      req.on("timeout", () => req.destroy(new Error("timeout")));
-      req.on("response", (res) => {
-        if (res.statusCode >= 300 && res.statusCode <= 399) {
-          return resolve(this.request(res.headers.location));
-        }
-        const chunks = [];
-        res.on("error", reject);
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => resolve(Buffer.concat(chunks)));
-      });
-    });
+    // 使用 stealthNet 的伪装请求替代裸 HTTP
+    // 浏览器级请求头 + 行为延迟 + 速率限制
+    const stealth = require("./src/stealthNet.js");
+    return stealth.stealthRequest(url, { timeout: 15000 });
   }
 
   // 下载失败时尝试其它域名
@@ -289,26 +278,53 @@ class ImgDownloader {
     }
   }
 
-  // ##### 统一入口: 一条消息的全部媒体元素下载 #####
+  // ##### 统一入口: 一条消息的全部媒体元素下载 (反风控版) #####
+  // 按消息类型分级处理:
+  //   TIER 1 (文本/表情/引用/ARK/Markdown): 零网络请求, 纯内存恢复
+  //   TIER 2 (图片/视频/语音/文件): 仅当用户已看过该消息才被动恢复
+  //   TIER 3 (合并转发/小程序): 默认不恢复资源 (结构复杂/特征明显)
   async downloadAllElementsInMsg(msgItem) {
     if (!this.enabled) return;
-    this.snapshotMsg(msgItem); // 恢复底线: 元素全量快照
+    this.snapshotMsg(msgItem); // 恢复底线: 元素全量快照 (纯本地, 无网络)
+
     if (!msgItem || !msgItem.elements || !Array.isArray(msgItem.elements)) {
-      // 合并转发消息可能直接嵌套在 multiForwardMsgElement 上
       if (msgItem?.multiForwardMsgElement) {
-        await this.downloadMultiForwardElement(msgItem.multiForwardMsgElement, msgItem);
+        // TIER 3: 合并转发, 只快照不下载
+        output("multiForward: snapshot only (TIER 3, no resource download)");
       }
       return;
     }
+
+    // 分级判断
+    const stealth = require("./src/stealthNet.js");
+    const cls = stealth.classifyElements(msgItem.elements);
+
+    // TIER 1: 零网络请求
+    if (cls.tier === 1) {
+      output("TIER 1 (text/face/reply/ark): zero network requests");
+      return; // 纯文本/表情/引用等, 不需要下载任何资源
+    }
+
+    // TIER 3: 合并转发/小程序, 跳过资源下载
+    if (cls.tier === 3) {
+      output("TIER 3 (multiForward/lightApp): skip resource download");
+      return;
+    }
+
+    // TIER 2: 被动恢复 (用户看过才下载)
+    if (!stealth.shouldDownloadResources(msgItem)) {
+      output("TIER 2 passive: user hasn't seen this msg yet, skip download");
+      return;
+    }
+
+    // 执行下载
     for (const el of msgItem.elements) {
       try {
         if (el?.picElement) await this.downloadPicElement(el.picElement, msgItem);
         else if (el?.pttElement) await this.downloadPttElement(el.pttElement, msgItem);
         else if (el?.videoElement) await this.downloadVideoElement(el.videoElement, msgItem);
         else if (el?.fileElement) await this.downloadFileElement(el.fileElement, msgItem);
-        else if (el?.marketFaceElement) await this.downloadMarketFaceElement(el.marketFaceElement, msgItem);
-        else if (el?.lightAppElement) await this.downloadLightAppElement(el.lightAppElement, msgItem);
-        else if (el?.multiForwardMsgElement) await this.downloadMultiForwardElement(el.multiForwardMsgElement, msgItem);
+        // 大表情/小程序/合并转发: 不主动下载
       } catch (e) {
         output("element download err:", e && e.message);
       }
