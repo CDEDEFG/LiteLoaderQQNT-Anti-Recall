@@ -483,24 +483,25 @@ async function patchCss() {
 
 onLoad();
 
-async function onLoad() {
-  // 缓存 nowConfig, 避免频繁 IPC; 配置变更时主进程会主动推送 repatchCss 更新
-  var cachedConfig = null;
-  var configLastFetch = 0;
-  async function getNowConfigCached() {
-    var now = Date.now();
-    // 1秒内缓存有效
-    if (cachedConfig != null && now - configLastFetch < 1000) {
-      return cachedConfig;
-    }
-    try {
-      cachedConfig = await window.anti_recall.getNowConfig();
-      configLastFetch = now;
-      return cachedConfig;
-    } catch (e) {
-      return cachedConfig || {};
-    }
+// 缓存 nowConfig, 避免频繁 IPC; 配置变更时主进程会主动推送 repatchCss 更新
+var cachedConfig = null;
+var configLastFetch = 0;
+async function getNowConfigCached() {
+  var now = Date.now();
+  // 1秒内缓存有效
+  if (cachedConfig != null && now - configLastFetch < 1000) {
+    return cachedConfig;
   }
+  try {
+    cachedConfig = await window.anti_recall.getNowConfig();
+    configLastFetch = now;
+    return cachedConfig;
+  } catch (e) {
+    return cachedConfig || {};
+  }
+}
+
+async function onLoad() {
   // 主进程通知配置变更时立即失效缓存
   anti_recall.repatchCss(async () => {
     cachedConfig = null;
