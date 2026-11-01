@@ -165,15 +165,18 @@ var recalledMsg = [];
 // 后台下载队列: 撤回消息的资源下载不阻塞 send 主链路
 // 主链路只做内存级别的消息内容替换, 图片/语音/视频的下载异步执行
 var downloadQueue = [];
+var downloadQueueSet = new Set(); // msgId 去重, 避免同一条消息多次入队
 var downloadRunning = false;
 
 function queueBackgroundDownload(savedMsgs) {
   if (!Array.isArray(savedMsgs)) savedMsgs = [savedMsgs];
   for (const s of savedMsgs) {
-    if (s && s.msg) downloadQueue.push(s.msg);
+    if (s && s.msg && s.id != null && !downloadQueueSet.has(s.id)) {
+      downloadQueueSet.add(s.id);
+      downloadQueue.push(s.msg);
+    }
   }
   if (!downloadRunning) {
-    // 彻底脱离当前调用栈, 保证撤回分发主链路立即返回
     setImmediate(() => {
       drainDownloadQueue().catch((e) => output("drain err:", e && e.message));
     });
@@ -186,6 +189,7 @@ async function drainDownloadQueue() {
   try {
     while (downloadQueue.length > 0) {
       const msg = downloadQueue.shift();
+      if (msg && msg.msgId != null) downloadQueueSet.delete(msg.msgId);
       try {
         await imgDownloader.downloadPic(msg);
       } catch (e) {
@@ -400,25 +404,36 @@ function doRestore(recallTipMsg, saved) {
 async function processMsgList(msgList, removeUnrecovered) {
   if (!(msgList instanceof Array) || msgList.length === 0) return null;
 
-  var currentMsgPeer = "";
   var sawRecall = false;
   var removeIdx = [];
+  // 修复: peer 按撤回消息自己的 peerUid 取, 不再用前一条消息的 peerUid (跨会话时会错)
+  var recalledPeers = new Set();
 
   for (let idx = 0; idx < msgList.length; idx++) {
     var item = msgList[idx];
     if (item == null || typeof item !== "object") continue;
-    if (item.peerUid !== undefined && item.peerUid !== null) {
-      currentMsgPeer = item.peerUid;
-    }
 
     var revokeEl = getRevokeElement(item);
     if (revokeEl != null) {
       if (!shouldIntercept(revokeEl)) continue;
       sawRecall = true;
-      await handleRecallEvent(item.msgId);
-      var recovered = await restoreRecallTipInPlace(item);
+      // 同步优先: 命中缓存立即返回, 不 await db
+      handleRecallEventSync(item.msgId);
+      // 同步恢复 (命中 msgFlow/recalledMsg 的 95% 场景)
+      var recovered = restoreRecallTipInPlaceSync(item);
+      // 同步未命中再走 db (仅 saveDb 开启时才有)
+      if (!recovered && nowConfig.saveDb) {
+        recovered = await restoreRecallTipInPlace(item);
+      }
       if (!recovered && removeUnrecovered) {
         removeIdx.push(idx);
+      }
+      // 记录被撤回消息的 peer (撤回提示本身可能不带 peerUid, 从缓存里取)
+      var savedMsg = findOriginalMsgSync(item.msgId);
+      if (savedMsg != null && savedMsg.sender != null) {
+        recalledPeers.add(savedMsg.sender);
+      } else if (item.peerUid != null) {
+        recalledPeers.add(item.peerUid);
       }
     } else if (item.msgId !== undefined) {
       cacheIncomingMsg(item);
@@ -433,7 +448,8 @@ async function processMsgList(msgList, removeUnrecovered) {
     output("Removed unrecoverable recall tip(s) from msgList");
   }
 
-  return sawRecall ? currentMsgPeer : null;
+  // 返回所有涉及到的 peer 列表 (替代原来单一的 currentMsgPeer)
+  return sawRecall ? Array.from(recalledPeers) : null;
 }
 
 function recallTipListFor(peer) {
@@ -472,7 +488,7 @@ function isIncomingMsgChannel(cmdName) {
 // 递归扫描 send 的全部参数, 找出所有 {msgList:[...]} 容器与 {cmdName,payload} 结构
 // 不依赖固定层级, 腾讯把 payload 再套一层也能处理
 function scanAndProcess(node, context, depth, seen) {
-  if (node == null || typeof node !== "object" || depth > 8) return;
+  if (node == null || typeof node !== "object" || depth > 16) return;
   if (seen.has(node)) return;
   seen.add(node);
 
@@ -502,8 +518,9 @@ function scanAndProcess(node, context, depth, seen) {
         (m) => getRevokeElement(m) != null && shouldIntercept(getRevokeElement(m))
       );
 
-    if (isPureRecallUpdate && node.msgList.length <= 2) {
+    if (isPureRecallUpdate) {
       // 原版增量路径: cmdName="none" + 清空msgList
+      // 多条纯撤回也走这条路 (1条/多条没有本质区别)
       for (var m of node.msgList) {
         context.pending.push(handleRecallEvent(m.msgId));
       }
@@ -512,15 +529,15 @@ function scanAndProcess(node, context, depth, seen) {
         context.cmdNameOwner.cmdName = "none";
       }
       context.sawRecall = true;
-      output("Detected recall, intercepted (neutralized incremental update)");
+      output("Detected recall, intercepted (neutralized incremental update, count=" + (context.pending.length) + ")");
     } else {
       // 全量/历史/混合路径: 原位替换或掐掉无法恢复的灰条
       var removeUnrecovered = context.isIncremental === true;
       context.pending.push(
-        processMsgList(node.msgList, removeUnrecovered).then((peer) => {
-          if (peer !== null) {
+        processMsgList(node.msgList, removeUnrecovered).then((peers) => {
+          if (peers != null && peers.length > 0) {
             context.sawRecall = true;
-            context.peers.add(peer);
+            for (var p of peers) context.peers.add(p);
           }
         })
       );
