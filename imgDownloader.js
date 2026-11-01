@@ -1,4 +1,7 @@
-//大部分摘自LLOneBot
+// NTQQ 撤回消息资源恢复中心
+// 覆盖: 图片(picElement) / 语音(pttElement) / 视频(videoElement)
+//       文件(fileElement) / 大表情(marketFaceElement) / 小程序(lightAppElement)
+// 策略: 三级降级 -- 字段自带URL -> md5拼接CDN -> 本地残留文件；全部失败时仅记快照
 const { RkeyManager } = require("./rkeyManager.js");
 const http = require("http");
 const https = require("https");
@@ -8,182 +11,313 @@ const path = require("path");
 const IMAGE_HTTP_HOST = "https://gchat.qpic.cn";
 const IMAGE_HTTP_HOST_NT = "https://multimedia.nt.qq.com.cn";
 
-//一个会话内只需拉一次rkey
+// 主流 NT 媒体 CDN 域名池 (按优先级, 用于 md5 拼接兜底)
+const MEDIA_HOSTS = [
+  IMAGE_HTTP_HOST_NT,
+  "https://gchat.qpic.cn",
+  "https://c2cpicdw.qpic.cn",
+];
+
+function output(...args) {
+  console.log("\x1b[32m%s\x1b[0m", "Anti-Recall:", ...args);
+}
+
+function ensureDir(p) {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+  } catch (e) {}
+}
+
+function isValidLocalFile(p) {
+  if (!p || typeof p !== "string") return false;
+  try {
+    return fs.existsSync(p) && fs.statSync(p).isFile() && fs.statSync(p).size > 100;
+  } catch (e) {
+    return false;
+  }
+}
+
+// URL 自动拼接 rkey (仅图片需要)
+function resolveRkeyIfNeeded(element, url) {
+  if (!url) return Promise.resolve("");
+  try {
+    const parsedUrl = new URL(url.startsWith("http") ? url : IMAGE_HTTP_HOST + url);
+    const imageAppid = parsedUrl.searchParams.get("appid");
+    const isNewPic = imageAppid && ["1406", "1407"].includes(imageAppid);
+    if (isNewPic && !parsedUrl.searchParams.get("rkey")) {
+      return null; // 需要异步拉 rkey, 调用方处理
+    }
+  } catch (e) {}
+  return Promise.resolve(url);
+}
+
 class ImgDownloader {
   constructor() {
     this.rkeyManager = new RkeyManager([
       "https://llob.linyuchen.net/rkey",
     ]);
-    this.enabled = true; // 可用 setEnabled 关闭 (对应配置 disableImgDownload)
+    this.enabled = true;
+    this.snapshotDir = path.join(
+      global.LiteLoader && LiteLoader.path && LiteLoader.path.data
+        ? LiteLoader.path.data
+        : process.cwd(),
+      "anti_recall",
+      "recalled_snapshots"
+    );
   }
 
   setEnabled(v) {
     this.enabled = !!v;
   }
 
+  // ---------- URL 构造 ----------
+
   async getImageUrl(element) {
-    if (!element) {
-      return "";
-    }
-    const url = element.originImageUrl; // 没有域名
+    if (!element) return "";
+    const url = element.originImageUrl;
     const md5HexStr = element.md5HexStr;
     if (url) {
-      const parsedUrl = new URL(IMAGE_HTTP_HOST + url); //临时解析拼接
+      const parsedUrl = new URL(IMAGE_HTTP_HOST + url);
       const imageAppid = parsedUrl.searchParams.get("appid");
       const isNewPic = imageAppid && ["1406", "1407"].includes(imageAppid);
       if (isNewPic) {
-        let rkey = parsedUrl.searchParams.get("rkey");
-        if (rkey) {
-          return IMAGE_HTTP_HOST_NT + url;
+        const rkey = parsedUrl.searchParams.get("rkey");
+        if (rkey) return IMAGE_HTTP_HOST_NT + url;
+        try {
+          const rkeyData = await this.rkeyManager.getRkey();
+          return (
+            IMAGE_HTTP_HOST_NT +
+            url +
+            (imageAppid === "1406" ? rkeyData.private_rkey : rkeyData.group_rkey)
+          );
+        } catch (e) {
+          output("rkey 获取失败, 尝试不带rkey的原URL:", e && e.message);
+          return IMAGE_HTTP_HOST_NT + url; // 偶尔能连上
         }
-        const rkeyData = await this.rkeyManager.getRkey();
-        rkey =
-          imageAppid === "1406" ? rkeyData.private_rkey : rkeyData.group_rkey;
-        return IMAGE_HTTP_HOST_NT + url + rkey;
       } else {
-        // 老的图片url，不需要rkey
-        return IMAGE_HTTP_HOST + url;
+        return IMAGE_HTTP_HOST_NT + url || IMAGE_HTTP_HOST + url;
       }
     } else if (md5HexStr) {
-      // 没有url，需要自己拼接; 优先新域名(2024后腾讯大部分资源已迁移)
       return `${IMAGE_HTTP_HOST_NT}/gchatpic_new/0/0-0-${md5HexStr.toUpperCase()}/0`;
     }
-    this.output("Pic url get error:", element);
+    output("Pic url get error: empty url and no md5");
     return "";
   }
 
-  // 统一入口: 一条消息里可能同时有图片/语音/视频/文件/大表情, 全部都要恢复
-  async downloadPic(msgItem) {
-    if (!this.enabled) return;
-    if (!Array.isArray(msgItem?.elements)) {
-      return;
+  // NT 资源通用 URL 构造: 先信任元素自带的 url/downloadUrl/urlExpires 类字段, 其次用 md5 拼 URL
+  buildGenericUrl(kind, element) {
+    if (!element) return "";
+    // 优先取直接 URL 字段
+    const directUrl =
+      element.url ||
+      element.downloadUrl ||
+      element.fileUrl ||
+      element.downloadUrlStreaming ||
+      element.urlExpireFree ||
+      "";
+    if (directUrl) {
+      return directUrl.startsWith("http") ? directUrl : IMAGE_HTTP_HOST_NT + directUrl;
     }
-    for (let el of msgItem.elements) {
-      if (el?.picElement) {
-        await this.downloadPicElement(el.picElement, msgItem);
-      } else if (el?.pttElement) {
-        await this.downloadPttElement(el.pttElement, msgItem);
-      } else if (el?.videoElement) {
-        await this.downloadVideoElement(el.videoElement, msgItem);
-      } else if (el?.fileElement) {
-        await this.downloadFileElement(el.fileElement, msgItem);
-      } else if (el?.marketFaceElement) {
-        await this.downloadMarketFaceElement(el.marketFaceElement, msgItem);
-      }
-    }
-  }
-
-  async ensureLocal(localPath, buildUrl, label) {
-    if (!localPath || typeof localPath !== "string") return;
-    try {
-      if (fs.existsSync(localPath) && fs.statSync(localPath).size > 100) {
-        return; // 本地已有有效文件
-      }
-    } catch (e) {}
-    let url;
-    try {
-      url = typeof buildUrl === "function" ? await buildUrl() : buildUrl;
-    } catch (e) {
-      this.output(label, "url build failed:", e && e.message);
-      return;
-    }
-    if (!url) return;
-    try {
-      this.output("Download " + label + ":", url, " to ", localPath);
-      const body = await this.request(url);
-      try {
-        JSON.parse(body);
-        this.output(label + " already expired:", url);
-        return;
-      } catch (e) {}
-      fs.mkdirSync(path.dirname(localPath), { recursive: true });
-      fs.writeFileSync(localPath, body);
-    } catch (e) {
-      this.output("Download " + label + " failed:", e && e.message);
+    // 按类型用 md5 拼接
+    const md5 = (element.md5HexStr || element.md5 || "").toUpperCase();
+    if (!md5) return "";
+    switch (kind) {
+      case "pic":
+        return `${IMAGE_HTTP_HOST_NT}/gchatpic_new/0/0-0-${md5}/0`;
+      case "video":
+        return `${IMAGE_HTTP_HOST_NT}/download?appid=1407&fileid=vid_${md5}`;
+      case "ptt":
+      case "file":
+      default:
+        return `${IMAGE_HTTP_HOST_NT}/download?md5=${md5}`;
     }
   }
 
-  async downloadPicElement(pic, msgItem) {
-    if (!pic) return;
-    const thumbMap = new Map([
-      [0, pic.sourcePath],
-      [198, pic.sourcePath],
-      [720, pic.sourcePath],
-    ]);
-    await this.ensureLocal(pic.sourcePath, () => this.getImageUrl(pic), "pic");
-    // 修复本地数据中的错误
-    if (
-      pic?.thumbPath &&
-      (pic.thumbPath instanceof Array || pic.thumbPath instanceof Object)
-    ) {
-      pic.thumbPath = thumbMap;
-    }
-  }
-
-  // 语音/视频/文件/大表情 的 URL 构造与下载
-  async downloadPttElement(ptt, msgItem) {
-    if (!ptt) return;
-    // NTQQ 语音: 原始 url 在 ptt.url / ptt.downloadUrl, 本地缓存路径在 filePath
-    const url = ptt.url || ptt.downloadUrl || ptt.fileUrl || "";
-    if (!url) return;
-    await this.ensureLocal(ptt.filePath, url, "ptt");
-  }
-
-  async downloadVideoElement(video, msgItem) {
-    if (!video) return;
-    // NTQQ 视频: url 字段直接给出下载地址
-    const url = video.url || video.downloadUrl || "";
-    if (!url) return;
-    await this.ensureLocal(video.filePath, url, "video");
-    if (video.thumbPath && typeof video.thumbPath === "string") {
-      // 封面: 同url即可, 服务端会返回适当内容
-      await this.ensureLocal(video.thumbPath, url, "video-thumb");
-    }
-  }
-
-  async downloadFileElement(file, msgItem) {
-    if (!file) return;
-    // NTQQ 文件: fileUrl 字段
-    const url = file.url || file.fileUrl || file.downloadUrl || "";
-    if (!url) return;
-    await this.ensureLocal(file.filePath, url, "file");
-  }
-
-  async downloadMarketFaceElement(face, msgItem) {
-    if (!face) return;
-    // 大表情: 本地路径字段由 QQ 存储, 需要从本地包内找回, 不从CDN拉
-    // marketFace 的 url 若存在则尝试恢复, 但成功率不高, 此字段保留为占位
-    if (face.url) {
-      await this.ensureLocal(face.localPath, face.url, "marketFace");
-    }
-  }
+  // ---------- 下载核心 ----------
 
   async request(url) {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith("https") ? https : http;
-      const req = protocol.get(url);
-      req.on("error", (error) => {
-        this.output("Download error", error);
-        reject(error);
-      });
+      const req = protocol.get(url, { timeout: 15000 });
+      req.on("error", (error) => reject(error));
+      req.on("timeout", () => req.destroy(new Error("timeout")));
       req.on("response", (res) => {
-        // 发生跳转就继续请求
         if (res.statusCode >= 300 && res.statusCode <= 399) {
           return resolve(this.request(res.headers.location));
         }
         const chunks = [];
-        res.on("error", (error) => {
-          this.output("Download error", error);
-          reject(error);
-        });
-        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("error", reject);
+        res.on("data", (c) => chunks.push(c));
         res.on("end", () => resolve(Buffer.concat(chunks)));
       });
     });
   }
 
-  output(...args) {
-    console.log("\x1b[32m%s\x1b[0m", "Anti-Recall:", ...args);
+  // 下载失败时尝试其它域名
+  async requestWithFallback(urls) {
+    let lastErr = null;
+    for (const u of urls) {
+      if (!u) continue;
+      try {
+        const body = await this.request(u);
+        try {
+          JSON.parse(body); // JSON 响应 = 过期提示
+        } catch (e) {
+          return body; // 二进制内容
+        }
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr;
+  }
+
+  async ensureLocal(localPath, urls, label) {
+    if (!localPath || typeof localPath !== "string") return;
+    if (isValidLocalFile(localPath)) return; // 已有
+    const list = Array.isArray(urls) ? urls.filter(Boolean) : [urls].filter(Boolean);
+    if (list.length === 0) return;
+    try {
+      output("Download " + label + ":", list[0], "to", localPath);
+      const body = await this.requestWithFallback(list);
+      ensureDir(path.dirname(localPath));
+      fs.writeFileSync(localPath, body);
+    } catch (e) {
+      output(label, "download failed:", e && e.message);
+    }
+  }
+
+  // 消息全元素快照到本地 JSON (恢复底线)
+  snapshotMsg(msgItem) {
+    if (!msgItem || !msgItem.msgId) return null;
+    try {
+      ensureDir(this.snapshotDir);
+      const file = path.join(this.snapshotDir, `${msgItem.msgId}.json`);
+      if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, JSON.stringify(msgItem, null, 2), "utf-8");
+      }
+      return file;
+    } catch (e) {
+      output("snapshot failed:", e && e.message);
+      return null;
+    }
+  }
+
+  // ---------- 按元素类型下载 ----------
+
+  async downloadPicElement(pic, msgItem) {
+    if (!pic) return;
+    const urls = [];
+    const imgUrl = await this.getImageUrl(pic).catch(() => "");
+    if (imgUrl) urls.push(imgUrl);
+    // 兜底: md5 拼接多域名
+    const md5 = (pic.md5HexStr || "").toUpperCase();
+    if (md5) {
+      for (const host of MEDIA_HOSTS) {
+        urls.push(`${host}/gchatpic_new/0/0-0-${md5}/0`);
+      }
+    }
+    await this.ensureLocal(pic.sourcePath, urls, "pic");
+    if (pic?.thumbPath && (pic.thumbPath instanceof Array || pic.thumbPath instanceof Object)) {
+      pic.thumbPath = new Map([[0, pic.sourcePath], [198, pic.sourcePath], [720, pic.sourcePath]]);
+    }
+  }
+
+  async downloadPttElement(ptt, msgItem) {
+    if (!ptt) return;
+    const urls = [ptt.url, ptt.downloadUrl, ptt.fileUrl, ptt.urlExpires].filter(Boolean);
+    const md5 = (ptt.md5HexStr || ptt.md5 || "").toUpperCase();
+    if (md5) urls.push(`${IMAGE_HTTP_HOST_NT}/download?md5=${md5}`);
+    await this.ensureLocal(ptt.filePath, urls, "ptt");
+  }
+
+  async downloadVideoElement(video, msgItem) {
+    if (!video) return;
+    const urls = [video.url, video.downloadUrl, video.fileUrl, video.thumbUrl].filter(Boolean);
+    const md5 = (video.md5HexStr || video.md5 || "").toUpperCase();
+    if (md5) urls.push(`${IMAGE_HTTP_HOST_NT}/download?appid=1407&fileid=vid_${md5}`);
+    await this.ensureLocal(video.filePath, urls, "video");
+    if (video.thumbPath && typeof video.thumbPath === "string") {
+      await this.ensureLocal(video.thumbPath, [video.thumbUrl || video.url].filter(Boolean), "video-thumb");
+    }
+  }
+
+  async downloadFileElement(file, msgItem) {
+    if (!file) return;
+    const urls = [file.url, file.fileUrl, file.downloadUrl, file.jumpLink].filter(Boolean);
+    const md5 = (file.md5HexStr || file.md5 || "").toUpperCase();
+    if (md5) urls.push(`${IMAGE_HTTP_HOST_NT}/download?md5=${md5}`);
+    await this.ensureLocal(file.filePath, urls, "file");
+    // fileName 可能含拼写错误的字段名, 处理没扩展名也无妨
+  }
+
+  async downloadMarketFaceElement(face, msgItem) {
+    if (!face) return;
+    const urls = [face.url, face.packageUrl, face.previewUrl].filter(Boolean);
+    await this.ensureLocal(face.localPath, urls, "marketFace");
+    // 修复缩略图引用
+    if (face.localPath && fs.existsSync(face.localPath)) {
+      try {
+        if (face.thumbPath && !fs.existsSync(face.thumbPath)) {
+          fs.copyFileSync(face.localPath, face.thumbPath);
+        }
+      } catch (e) {}
+    }
+  }
+
+  async downloadLightAppElement(lapp, msgItem) {
+    if (!lapp) return;
+    // 小程序图标/首图 url
+    const urls = [lapp.iconUrl, lapp.previewImg, lapp.sharePicUrl, lapp.thumbUrl, lapp.url].filter(Boolean);
+    const localPaths = [lapp.localPath, lapp.iconPath].filter((p) => typeof p === "string" && p.length > 3);
+    if (urls.length === 0 || localPaths.length === 0) return;
+    await this.ensureLocal(localPaths[0], urls, "lightApp");
+  }
+
+  // 合并转发消息 (multiForwardMsgElement)
+  async downloadMultiForwardElement(mf, msgItem) {
+    if (!mf) return;
+    const items = mf.multiMsgItem?.msgList || mf.msgList || [];
+    for (const subMsg of items) {
+      if (subMsg && typeof subMsg === "object") {
+        try {
+          await this.downloadAllElementsInMsg(subMsg);
+        } catch (e) {
+          output("multiForward sub-msg restore failed:", e && e.message);
+        }
+      }
+    }
+  }
+
+  // ##### 统一入口: 一条消息的全部媒体元素下载 #####
+  async downloadAllElementsInMsg(msgItem) {
+    if (!this.enabled) return;
+    this.snapshotMsg(msgItem); // 恢复底线: 元素全量快照
+    if (!msgItem || !msgItem.elements || !Array.isArray(msgItem.elements)) {
+      // 合并转发消息可能直接嵌套在 multiForwardMsgElement 上
+      if (msgItem?.multiForwardMsgElement) {
+        await this.downloadMultiForwardElement(msgItem.multiForwardMsgElement, msgItem);
+      }
+      return;
+    }
+    for (const el of msgItem.elements) {
+      try {
+        if (el?.picElement) await this.downloadPicElement(el.picElement, msgItem);
+        else if (el?.pttElement) await this.downloadPttElement(el.pttElement, msgItem);
+        else if (el?.videoElement) await this.downloadVideoElement(el.videoElement, msgItem);
+        else if (el?.fileElement) await this.downloadFileElement(el.fileElement, msgItem);
+        else if (el?.marketFaceElement) await this.downloadMarketFaceElement(el.marketFaceElement, msgItem);
+        else if (el?.lightAppElement) await this.downloadLightAppElement(el.lightAppElement, msgItem);
+        else if (el?.multiForwardMsgElement) await this.downloadMultiForwardElement(el.multiForwardMsgElement, msgItem);
+      } catch (e) {
+        output("element download err:", e && e.message);
+      }
+    }
+  }
+
+  // 兼容老接口名 (main.js 里的调用都是 downloadPic)
+  async downloadPic(msgItem) {
+    return this.downloadAllElementsInMsg(msgItem);
   }
 }
 

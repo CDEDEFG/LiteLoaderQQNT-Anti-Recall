@@ -9,6 +9,8 @@ const fs = require("fs");
 const path = require("path");
 const { app, ipcMain, dialog } = require("electron");
 const { ImgDownloader } = require("./imgDownloader.js");
+const { NtSnapshotManager } = require("./ntSnapshotManager.js");
+const snapshotManager = new NtSnapshotManager();
 
 function output(...args) {
   console.log("\x1b[32m%s\x1b[0m", "Anti-Recall:", ...args);
@@ -505,6 +507,14 @@ function makePatchedSend(wc, original_send) {
         var seen = new Set();
         for (var a of args) {
           scanAndProcess(a, context, 0, seen);
+          // 顺带处理群文件/相册/公告 快照
+          try {
+            if (a && typeof a === "object" && typeof a.cmdName === "string") {
+              snapshotManager.processIpcPayload(a);
+            }
+          } catch (e) {
+            output("snapshot hook err:", e && e.message);
+          }
         }
         await Promise.all(context.pending);
 
