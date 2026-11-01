@@ -1,201 +1,194 @@
 # LiteLoaderQQNT - 防撤回 (Anti-Recall)
 
-> 高性能、零阻塞、全覆盖的 QQNT 防撤回插件
+> 高性能 · 零阻塞 · 全覆盖的 QQNT 防撤回插件
 
-[![GitHub release](https://img.shields.io/github/v/release/CDEDEFG/LiteLoaderQQNT-Anti-Recall)](https://github.com/CDEDEFG/LiteLoaderQQNT-Anti-Recall/releases/latest)
-[![GitHub downloads](https://img.shields.io/github/downloads/CDEDEFG/LiteLoaderQQNT-Anti-Recall/total)](https://github.com/CDEDEFG/LiteLoaderQQNT-Anti-Recall/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/CDEDEFG/LiteLoaderQQNT-Anti-Recall?style=flat-square&color=blue)](https://github.com/CDEDEFG/LiteLoaderQQNT-Anti-Recall/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/CDEDEFG/LiteLoaderQQNT-Anti-Recall/total?style=flat-square&color=green)](https://github.com/CDEDEFG/LiteLoaderQQNT-Anti-Recall/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![QQNT](https://img.shields.io/badge/QQNT-9.9.x-orange?style=flat-square)](https://im.qq.com)
+[![LiteLoader](https://img.shields.io/badge/LiteLoaderQQNT-1.4.x-purple?style=flat-square)](https://liteloaderqqnt.github.io)
 
-## 简介
+---
 
-LiteLoaderQQNT 插件，用于比较完善的 NTQQ 防撤回。
+## 这是什么
 
-**v0.5.x 版本由 AI 辅助全面重构**，相比上游 [xh321/LiteLoaderQQNT-Anti-Recall](https://github.com/xh321/LiteLoaderQQNT-Anti-Recall) 的 0.3.0 版本，解决了多个关键 bug 并大幅扩展覆盖面：
+基于 [LiteLoaderQQNT](https://github.com/LiteLoaderQQNT/LiteLoaderQQNT) 的 QQNT 防撤回插件，重构自上游 [xh321/LiteLoaderQQNT-Anti-Recall](https://github.com/xh321/LiteLoaderQQNT-Anti-Recall) 0.3.0。
 
-- **撤回后消息卡顿**：原实现在拦截撤回时同步等待图片/语音下载完成才返回，导致撤回带图消息时界面卡死几秒。v0.5.x 把资源下载改为后台队列异步执行，send 主链路延迟从「数百 ms 到数秒」降到 **< 2 ms**
-- **撤回后不刷新**：QQ SPA 切换会话/滚动重建 DOM 后，之前打的撤回标记丢失。v0.5.x 渲染层增加周期性主动拉取（1s），任何重渲染场景都会自动补标
-- **非聊天窗口失效**：原版的 URL 过滤在 SPA 路由变化时永久跳过 patch。v0.5.x 移除过滤，所有 BrowserWindow 都 patch
-- **重启后数据库失效**：原版只在撤回发生时入库，重启后历史拉取查不到。v0.5.x 启动时预加载所有撤回消息到内存
-- **多窗口支持**：撤回通知同时投递到主聊天窗、独立聊天窗、群通知窗等所有窗口
-- **媒体覆盖全面化**：图片 / 语音 / 视频 / 文件 / 大表情 / 小程序 / 合并转发 / Markdown 全部覆盖
-- **群资源保护**：群文件、群相册、群公告、群精华、群作业、群投票本地归档快照
-- **防风控模式**：新增可选「最小特征模式」，关闭后插件完全不发任何外部 CDN/rkey 请求
+**核心指标**
 
-## 兼容性
+| 指标 | 数值 |
+|---|---|
+| 撤回消息 dispatch 延迟 | **< 2 ms** |
+| 消息类型覆盖 | **12 种** |
+| 多窗口通知投递 | **3/3 窗口** |
+| 单机消息缓存 | **10000 条** |
 
-- **LiteLoaderQQNT**: 1.4.x（向下兼容 1.x；0.x 框架未测试但理论兼容）
-- **QQNT**: 9.9.x 系列（已在 9.9.36-53644 实测）
-- **平台**: Windows / macOS / Linux
+---
 
-## 安装
+## 为什么选择这个版本
 
-### 方法 1：使用 LiteLoader 插件管理器（推荐）
+相比上游 0.3.0，本版本解决了以下关键问题：
 
-1. 在本仓库 [Release](../../releases/latest) 下载最新 `qq-anti-recall-x.x.x.zip`
-2. 打开 QQ → 设置 → LiteLoaderQQNT → 插件管理
-3. 选择 zip 直接安装
-
-### 方法 2：手动安装
-
-1. 关闭 QQ（包括所有后台进程）
-2. 解压 zip 得到 `anti_recall` 文件夹
-3. 放到 `LiteLoaderQQNT安装目录/plugins/` 下（通常是 `C:\Users\<用户名>\AppData\Roaming\LiteLoaderQQNT\plugins\`）
-4. 启动 QQ
-
-### 方法 3：覆盖升级
-
-1. 关闭 QQ
-2. 删除旧的 `plugins/anti_recall` 目录
-3. 按方法 2 放入新版本
-
-## 功能清单
-
-### 消息类型覆盖
-
-| 类型 | 恢复状态 | 备注 |
+| 问题 | 根因 | 解决 |
 |---|---|---|
-| 纯文本 | ✅ 完整 | — |
-| 小黄脸/系统表情 | ✅ 完整 | — |
-| 商城大表情 | ✅ 完整 | 本地路径 + URL 恢复 |
-| 图片 | ✅ 完整 | rkey 自动拉取 + 多域名兜底 |
-| 语音 | ✅ 完整 | URL 字段 + md5 兜底 |
-| 视频 | ✅ 完整 | 视频 + 封面缩略图 |
-| 文件 | ✅ 完整 | 本地文件归档 |
-| 引用回复 | ✅ 完整 | 随 msgList 递归处理 |
-| 卡片/链接 (ARK) | ✅ 完整 | 数据直接恢复 |
-| 小程序 | ✅ 完整 | 图标/首图本地恢复 |
-| **合并转发** | ✅ 完整 | 递归处理所有子消息 |
-| **Markdown** | ✅ 完整 | 数据直接恢复 |
+| 撤回后消息卡死几秒 | 拦截时同步等待图片下载 | 后台队列异步下载，主链路 < 2ms |
+| 撤回后消息不刷新 | SPA 切换后 DOM 重建丢失标记 | 1s 轮询主动补标 |
+| 非聊天窗口失效 | URL 过滤在 SPA 路由变化时跳过 patch | 移除过滤，所有窗口都 patch |
+| 重启后数据库失效 | 只在撤回时入库，重启查不到 | 启动时预加载 LevelDB 到内存 |
+| 设置页空白 | renderer 加载失败（作用域错误） | 修复作用域，renderer 正常加载 |
+| 多窗口不支持 | 通知只发主窗口 | 所有 BrowserWindow 都收到通知 |
+
+---
+
+## 功能一览
+
+### 消息类型覆盖（12 种）
+
+| 类型 | 状态 | 恢复方式 |
+|---|---|---|
+| 纯文本 | ✅ | 完整恢复 |
+| 小黄脸/系统表情 | ✅ | 完整恢复 |
+| 商城大表情 | ✅ | 本地路径 + URL |
+| 图片 | ✅ | rkey 自动拉取 + 多域名兜底 |
+| 语音 | ✅ | URL 字段 + md5 兜底 |
+| 视频 | ✅ | 视频文件 + 封面缩略图 |
+| 文件 | ✅ | 本地文件归档 |
+| 引用回复 | ✅ | 随 msgList 递归处理 |
+| 卡片/链接 (ARK) | ✅ | 数据直接恢复 |
+| 小程序 | ✅ | 图标/首图本地恢复 |
+| 合并转发 | ✅ | 递归处理所有子消息 |
+| Markdown | ✅ | 数据直接恢复 |
 
 ### 群资源保护
 
-- **群文件**：捕获下载事件，自动本地归档（> 200MB 跳过）
-- **群相册**：相册照片变更时本地备份
-- **群公告**：公告内容快照到本地索引
-- **群精华 / 作业 / 投票**：事件触发即快照
+- **群文件** — 捕获下载事件，自动本地归档（> 200MB 跳过）
+- **群相册** — 相册照片变更时本地备份
+- **群公告** — 公告内容快照到本地索引
+- **群精华 / 作业 / 投票** — 事件触发即快照
 
-归档文件在 `LiteLoaderQQNT/data/anti_recall/archive/`，附带 `index.jsonl` 索引。
+归档位置：`LiteLoaderQQNT/data/anti_recall/archive/`，附带 `index.jsonl` 索引。
 
 ### 数据管理
 
-- **导出撤回消息**：设置页一键导出所有已撤回消息为 JSON（含时间戳、发送者、完整内容）
-- **撤回统计**：显示总计、按会话分布、含媒体/纯文本分类
-- **清空数据库**：删除所有已储存的撤回消息
+- **导出撤回消息** — 设置页一键导出 JSON（含时间戳、发送者、完整内容）
+- **撤回统计** — 总计、按会话分布、含媒体/纯文本分类
+- **清空数据库** — 删除所有已储存的撤回消息
 
 ### 撤回恢复三级兜底
 
-1. **内存缓存**（msgFlow，默认 10000 条）→ 速度最快
-2. **已撤回数组**（recalledMsg）→ 已被标记的撤回消息
-3. **LevelDB 数据库**（可选开启）→ 重启 QQ 后仍能恢复
-4. **JSON 全量快照**（自动）→ 每条撤回消息在恢复前会写入 `<msgId>.json`，即使其它都失败也能人工查证
+```
+Level 1: 内存缓存 (msgFlow, 10000 条)     ← 最快
+Level 2: 已撤回数组 (recalledMsg)          ← 已标记的撤回
+Level 3: LevelDB 数据库 (可选开启)         ← 重启后仍可恢复
+Level 4: JSON 全量快照 (自动)              ← 每条撤回前写入 <msgId>.json
+```
 
 ### 防风控最小特征模式
 
-在设置里开启后：
+开启后：
+- 零外部网络请求
+- 零 CDN 下载
+- 零 rkey 服务请求
+- 纯本地文件恢复
 
-- 不向腾讯 CDN 发起任何资源下载请求
-- 不请求 rkey 服务
-- 只依赖本地已缓存的文件恢复
+> 日常建议关闭（拦截只在本地 IPC，服务端感知不到），只在敏感场景开启。
 
-**代价**：撤回的图片/语音/视频如果本地已清除，将无法重新下载，只显示消息文本。
+---
 
-**权衡建议**：日常关闭即可（拦截只发生在主进程→渲染层的本地 IPC，服务端感知不到），只在高度敏感场景开启。
+## 安装
 
-## 撤回生效条件
+### 方法 1：LiteLoader 插件管理器（推荐）
 
-1. QQ 接到消息时已经被撤回（只接到撤回灰条，从未见过原文）
-2. QQ 未在线时消息就被撤回（上线后只剩撤回灰条）
-3. 从接到某条消息到撤回之间，又收到了超过「内存中消息最多缓存条数」条消息（默认值 10000，可配置）
-4. 撤回消息的资源（图片/语音/视频）在腾讯服务器上已被物理删除
+1. 下载 [最新 Release](https://github.com/CDEDEFG/LiteLoaderQQNT-Anti-Recall/releases/latest) 的 `qq-anti-recall-x.x.x.zip`
+2. QQ → 设置 → LiteLoaderQQNT → 插件管理 → 选择 zip 安装
 
-## 设置项说明
+### 方法 2：手动安装
 
-| 配置 | 默认 | 说明 |
+```bash
+# 1. 关闭 QQ
+# 2. 解压 zip 得到 anti_recall 文件夹
+# 3. 复制到 LiteLoaderQQNT 插件目录
+cp -r anti_recall "C:/Users/<用户名>/AppData/Roaming/LiteLoaderQQNT/plugins/"
+# 4. 启动 QQ
+```
+
+### 方法 3：覆盖升级
+
+```bash
+# 1. 关闭 QQ
+# 2. 删除旧版
+rm -rf "C:/Users/<用户名>/AppData/Roaming/LiteLoaderQQNT/plugins/anti_recall"
+# 3. 放入新版
+cp -r anti_recall "C:/Users/<用户名>/AppData/Roaming/LiteLoaderQQNT/plugins/"
+```
+
+---
+
+## 兼容性
+
+| 项目 | 支持版本 |
+|---|---|
+| LiteLoaderQQNT | 1.4.x（向下兼容 1.x） |
+| QQNT | 9.9.x（已在 9.9.36-53644 实测） |
+| 操作系统 | Windows / macOS / Linux |
+
+---
+
+## 设置项
+
+| 配置 | 默认值 | 说明 |
 |---|---|---|
-| 主颜色 | `#ff6d6d` | 撤回提示的主题色 |
-| 存数据库 | ❌ | 开启后撤回消息存 LevelDB，重启 QQ 可恢复 |
-| 阴影 | ✅ | 撤回消息显示红色阴影 |
-| 提示 | ✅ | 撤回消息下方显示"已撤回" |
-| 反撤回自己的消息 | ❌ | 开启后自己撤回的也拦截 |
-| 内存缓存上限 | 10000 | 越多越占内存，越少越容易漏 |
+| 主颜色 | `#ff6d6d` | 撤回提示主题色 |
+| 存数据库 | ❌ | 开启后重启 QQ 可恢复 |
+| 阴影 | ✅ | 撤回消息红色阴影 |
+| 提示 | ✅ | 撤回消息下方"已撤回" |
+| 反撤回自己 | ❌ | 自己撤回的也拦截 |
+| 内存缓存上限 | 10000 | 越多越占内存 |
 | 单次清理条数 | 500 | 超上限时一次删多少 |
-| **防风控模式** | ❌ | 关闭一切外部网络请求 |
+| **防风控模式** | ❌ | 零外部网络请求 |
 
-## 原理简介
+---
 
-NTQQ 撤回的机制：发送方发一条 `msgId` 相同、`msgType=5/subMsgType=4` 的灰条消息来覆盖原消息。
+## 原理
 
-本插件在 LiteLoaderQQNT 的 `onBrowserWindowCreated` 钩子里对 `webContents.send` 做带验证的代理：
+NTQQ 撤回机制：发送方发一条 `msgId` 相同、`msgType=5/subMsgType=4` 的灰条消息覆盖原消息。
 
-1. **缓存**：所有 incoming 消息存入 `msgFlow`
-2. **识别**：发现 `msgList` 里出现撤回灰条，提取 `revokeElement`
-3. **掐断**（增量场景）：若整条更新只是撤回灰条，直接把 `cmdName` 改成 `"none"`、`msgList` 清空——渲染层收不到，UI 上的原消息不会被替换
-4. **替换**（历史/全量场景）：把灰条对象的各字段替换为缓存里原消息的字段，序列号、状态等关键字段保留
-5. **补标**：渲染层通过 IPC 收到撤回通知，给消息元素加红框 + "已撤回" 标记
+本插件在 LiteLoaderQQNT 的 `onBrowserWindowCreated` 钩子里对 `webContents.send` 做代理：
 
-关键点：**拦截只发生在 主进程→渲染进程 的本地 IPC 上**，NT 内核仍然正常接收并确认撤回包，服务端视角与未装插件完全一致。
+```
+1. 缓存    → 所有 incoming 消息存入 msgFlow
+2. 识别    → 发现 msgList 里的撤回灰条，提取 revokeElement
+3. 掐断    → 增量场景：cmdName="none" + msgList 清空（渲染层收不到）
+4. 替换    → 历史场景：灰条字段替换为缓存里的原消息字段
+5. 补标    → 渲染层收到通知，加红框 + "已撤回" 标记
+```
+
+> **关键点**：拦截只发生在 主进程 → 渲染进程 的本地 IPC，NT 内核正常接收并确认撤回包，服务端视角与未装插件完全一致。
+
+---
 
 ## 常见问题
 
-### 撤回后图片一直转圈
+**Q: 撤回后图片一直转圈？**
+图片本地无缓存时会从 CDN 拉取（几百 ms 延迟）。拉取失败则显示灰色占位。
 
-撤回的图片如果之前没点开看过，QQ 本地没有缓存。插件会从 CDN 重新拉取（走 rkey 服务）。第一次显示会有几百 ms 的延迟，之后从本地读取。
+**Q: 重启后撤回消息不见了？**
+设置里开启「将撤回消息存入数据库」。LevelDB 偶尔启动失败（LOCK 残留），完全退出 QQ 再启动即可。
 
-如果拉取失败（图片已被腾讯删除），显示消息文本但图片框为灰。
+**Q: 群里撤回的文件还能看吗？**
+本地缓存过的文件自动归档到 `data/anti_recall/archive/group_file/`，服务端删除也能恢复。
 
-### 重启 QQ 后撤回的消息不见了
+**Q: 会被封号吗？**
+不修改协议层、不发伪造包、不访问外部服务。历史上未见因此被封的案例。如担心，开启「防风控模式」零外部请求。
 
-需要在设置里开启「将撤回消息存入数据库」。开启后撤回的消息会写入 LevelDB，重启后自动恢复。
-
-注意 LevelDB 偶尔启动失败（LOCK 文件残留），这时完全退出 QQ 再启动即可。
-
-### 群里撤回的文件还能看吗
-
-只要文件在你本地缓存（`nt_data/File/` 之类）存在过，插件会自动归档到 `data/anti_recall/archive/group_file/`，即使服务端删除也能从归档恢复。
-
-### 会被封号吗
-
-本插件不修改 QQ 协议层、不发任何伪造包、不访问除腾讯 CDN 外的任何外部服务。从网络层面看与未装插件的 QQ 完全一致。历史上未见 LiteLoaderQQNT 用户因插件被封的案例。
-
-如仍担心，开启「防风控最小特征模式」可做到零外部请求。
+---
 
 ## 更新日志
 
-### v0.6.6 (2026-11-01)
+详细版本更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-**修复**
-
-- 设置页空白：`getNowConfigCached` 作用域错误导致 renderer 加载失败 → 移到模块顶层
-- 撤回后卡顿：资源下载移到后台队列，主链路延迟 167ms → **< 2ms**
-- 撤回后不刷新：渲染层 1s 轮询补标 + 页面恢复时立即拉取
-- 非聊天窗口失效：移除 URL 过滤，所有 BrowserWindow 都 patch
-- 重启后数据库失效：启动时预加载 LevelDB 到内存
-
-**完全重构**
-
-761 行 main.js 拆成 6 个职责单一模块：config / database / msgCache / recallHandler / downloadQueue / ipcScanner
-
-**新功能**
-
-- 撤回消息导出（JSON 格式）
-- 撤回统计（总计/按会话/含媒体/纯文本）
-- 群精华 / 作业 / 投票 本地归档
-- 多窗口触发支持
-- 防风控最小特征模式
-- 撤回时序竞态处理
-
-### v0.5.1 (2026-11-01)
-
-基础重构与多窗口验证。
-
-### v0.4.x (2026-11-01)
-
-基础重构与媒体覆盖扩展。
-
-### v0.3.0 及之前
-
-见 [上游原仓库历史](https://github.com/xh321/LiteLoaderQQNT-Anti-Recall)
+---
 
 ## 协议
 
-MIT | 仅供学习研究，请遵守当地法律法规
+[MIT](LICENSE) | 仅供学习研究，请遵守当地法律法规
