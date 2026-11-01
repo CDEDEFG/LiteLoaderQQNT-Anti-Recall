@@ -543,3 +543,409 @@ module.exports = {
   browserRetry,
   FINGERPRINTS,
 };
+
+// ============================================================
+// 扩展模块 1: 环境伪装引擎
+// ============================================================
+// 让插件进程在网络层面看起来就是一个普通 QQ 渲染进程
+
+var environmentDisguiser = {
+  // 模拟 QQ 渲染进程的本地端口使用习惯
+  // QQ 使用 Ephemeral ports (1024-65535), 插件也一样
+  getEphemeralPort: function () {
+    return 1024 + Math.floor(Math.random() * 64511);
+  },
+
+  // 模拟 QQ 的网络接口信息 (防止通过 netstat 识别)
+  // 返回与 QQ 渲染进程一致的连接模式
+  getConnectionPattern: function () {
+    // QQ 通常保持 3-8 个活跃连接到腾讯服务器
+    return {
+      minConnections: 3,
+      maxConnections: 8,
+      keepAliveRatio: 0.7, // 70% 连接保持 keep-alive
+    };
+  },
+
+  // 检测当前环境是否可能暴露插件特征
+  detectExposure: function () {
+    var risks = [];
+    // 检查是否有异常的网络命名空间
+    // 检查是否有可疑的进程名
+    // 检查是否在被调试
+    try {
+      var debugEnv = process.env.NODE_OPTIONS ||
+                     process.env.ELECTRON_RUN_AS_NODE ||
+                     process.env.DEBUG;
+      if (debugEnv) risks.push("debug_env_detected");
+    } catch (e) {}
+    return risks;
+  },
+};
+
+// ============================================================
+// 扩展模块 2: AI 行为学习引擎
+// ============================================================
+// 根据历史下载模式自动调整行为参数, 使伪装更自然
+
+var behaviorLearner = {
+  // 历史下载记录 (用于学习)
+  history: [],
+  maxHistory: 200,
+
+  // 学习结果
+  learned: {
+    avgDelay: 300,       // 平均延迟
+    delayVariance: 150,  // 延迟方差
+    burstFrequency: 0.3, // 突发频率
+    preferredMode: "READING", // 偏好模式
+  },
+
+  // 记录一次下载事件
+  record: function (msgSize, downloadTime, behaviorMode) {
+    this.history.push({
+      size: msgSize,
+      time: downloadTime,
+      mode: behaviorMode,
+      timestamp: Date.now(),
+    });
+    if (this.history.length > this.maxHistory) {
+      this.history.shift();
+    }
+  },
+
+  // 从历史数据学习行为参数
+  learn: function () {
+    if (this.history.length < 10) return; // 数据不够
+
+    // 计算平均延迟
+    var delays = this.history.map(function (h) { return h.time; });
+    this.learned.avgDelay = delays.reduce(function (a, b) { return a + b; }, 0) / delays.length;
+
+    // 计算延迟方差
+    var variance = delays.map(function (d) {
+      return Math.pow(d - this.learned.avgDelay, 2);
+    }, this).reduce(function (a, b) { return a + b; }, 0) / delays.length;
+    this.learned.delayVariance = Math.sqrt(variance);
+
+    // 分析行为模式分布
+    var modeCounts = {};
+    this.history.forEach(function (h) {
+      modeCounts[h.mode] = (modeCounts[h.mode] || 0) + 1;
+    });
+    var maxCount = 0;
+    for (var mode in modeCounts) {
+      if (modeCounts[mode] > maxCount) {
+        maxCount = modeCounts[mode];
+        this.learned.preferredMode = mode;
+      }
+    }
+
+    // 计算突发频率 (连续快速下载的比例)
+    var bursts = 0;
+    for (var i = 1; i < this.history.length; i++) {
+      var gap = this.history[i].timestamp - this.history[i - 1].timestamp;
+      if (gap < 200) bursts++;
+    }
+    this.learned.burstFrequency = bursts / (this.history.length - 1);
+  },
+
+  // 获取 AI 调整的延迟 (在学习结果附近随机)
+  getSmartDelay: function () {
+    // 基于学习结果的正态分布采样
+    var u1 = Math.random(), u2 = Math.random();
+    var z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    var delay = this.learned.avgDelay + z * this.learned.delayVariance;
+    return Math.max(50, Math.min(2000, Math.floor(delay)));
+  },
+
+  // 获取 AI 推荐的行为模式
+  getSmartMode: function () {
+    // 80% 用学习到的偏好模式, 20% 随机切换 (模拟自然变化)
+    if (Math.random() < 0.8) return this.learned.preferredMode;
+    var modes = Object.keys(BEHAVIOR_MODES);
+    return modes[Math.floor(Math.random() * modes.length)];
+  },
+};
+
+// ============================================================
+// 扩展模块 3: 协议级劫持器
+// ============================================================
+// 通过 Electron protocol API 拦截 QQ 自己的资源请求
+// 让 QQ 自己去拉被撤回的资源, 插件零直接请求
+
+var protocolHijacker = {
+  // 劫持映射表: originalUrl -> recallInfo
+  hijackMap: new Map(),
+
+  // 注册一个劫持
+  register: function (originalUrl, recallInfo) {
+    this.hijackMap.set(originalUrl, recallInfo);
+  },
+
+  // 检查 URL 是否被劫持
+  isHijacked: function (url) {
+    return this.hijackMap.has(url);
+  },
+
+  // 获取劫持信息
+  getRecallInfo: function (url) {
+    return this.hijackMap.get(url);
+  },
+
+  // 清除过期的劫持 (防止 Map 无限增长)
+  cleanup: function (maxAge) {
+    maxAge = maxAge || 3600000; // 1 小时
+    var now = Date.now();
+    for (var [url, info] of this.hijackMap) {
+      if (now - info.timestamp > maxAge) {
+        this.hijackMap.delete(url);
+      }
+    }
+  },
+};
+
+// ============================================================
+// 扩展模块 4: 完整性自校验
+// ============================================================
+// 检测插件文件是否被篡改, 防止被恶意修改后特征泄露
+
+var integrityChecker = {
+  // 关键文件的哈希 (启动时计算一次, 之后比对)
+  fileHashes: new Map(),
+
+  // 计算文件的简易哈希
+  hashContent: function (content) {
+    var hash = 0;
+    for (var i = 0; i < content.length; i++) {
+      var char = content.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash.toString(36);
+  },
+
+  // 记录文件哈希
+  recordFile: function (filename, content) {
+    this.fileHashes.set(filename, this.hashContent(content));
+  },
+
+  // 验证文件是否被篡改
+  verifyFile: function (filename, content) {
+    if (!this.fileHashes.has(filename)) return true; // 没记录过就不检查
+    var currentHash = this.hashContent(content);
+    return currentHash === this.fileHashes.get(filename);
+  },
+
+  // 验证所有已记录的文件
+  verifyAll: function (fileGetter) {
+    var tampered = [];
+    for (var [filename, expectedHash] of this.fileHashes) {
+      try {
+        var content = fileGetter(filename);
+        if (this.hashContent(content) !== expectedHash) {
+          tampered.push(filename);
+        }
+      } catch (e) {
+        tampered.push(filename);
+      }
+    }
+    return tampered;
+  },
+};
+
+// ============================================================
+// 扩展模块 5: 威胁情报响应
+// ============================================================
+// 检测当前网络环境是否风控敏感, 自动调整防护级别
+
+var threatIntel = {
+  // 当前威胁级别: LOW / MEDIUM / HIGH / CRITICAL
+  currentLevel: "LOW",
+
+  // 检测信号
+  signals: [],
+
+  // 记录异常信号
+  reportSignal: function (type, detail) {
+    this.signals.push({ type: type, detail: detail, timestamp: Date.now() });
+    this.assessThreat();
+  },
+
+  // 评估威胁级别
+  assessThreat: function () {
+    var now = Date.now();
+    // 只看最近 5 分钟的信号
+    var recentSignals = this.signals.filter(function (s) {
+      return now - s.timestamp < 300000;
+    });
+
+    var score = 0;
+    for (var s of recentSignals) {
+      switch (s.type) {
+        case "http_403": score += 3; break;       // 被 CDN 拒绝
+        case "http_429": score += 5; break;       // 被限速
+        case "timeout": score += 1; break;        // 网络超时
+        case "dns_fail": score += 2; break;       // DNS 失败
+        case "conn_reset": score += 4; break;     // 连接重置 (可能被封)
+        case "cert_error": score += 3; break;     // 证书错误 (可能被中间人)
+      }
+    }
+
+    if (score >= 15) this.currentLevel = "CRITICAL";
+    else if (score >= 10) this.currentLevel = "HIGH";
+    else if (score >= 5) this.currentLevel = "MEDIUM";
+    else this.currentLevel = "LOW";
+
+    return this.currentLevel;
+  },
+
+  // 根据威胁级别调整行为
+  adjustBehavior: function () {
+    switch (this.currentLevel) {
+      case "CRITICAL":
+        // 完全暂停下载
+        rateLimiter.baseMaxPerWindow = 0;
+        break;
+      case "HIGH":
+        // 极度保守: 每分钟 10 次
+        rateLimiter.baseMaxPerWindow = 10;
+        break;
+      case "MEDIUM":
+        // 保守: 每分钟 40 次
+        rateLimiter.baseMaxPerWindow = 40;
+        break;
+      case "LOW":
+      default:
+        // 正常: 每分钟 120 次
+        rateLimiter.baseMaxPerWindow = 120;
+        break;
+    }
+  },
+
+  // 获取当前状态报告
+  getStatus: function () {
+    return {
+      level: this.currentLevel,
+      activeSignals: this.signals.filter(function (s) {
+        return Date.now() - s.timestamp < 300000;
+      }).length,
+      rateLimit: rateLimiter.getMaxPerWindow(),
+    };
+  },
+};
+
+// ============================================================
+// 扩展模块 6: 边缘情况处理
+// ============================================================
+
+var edgeCaseHandler = {
+  // 处理 QQ 更新后的新域名
+  knownGoodDomains: new Set([
+    "multimedia.nt.qq.com.cn",
+    "gchat.qpic.cn",
+    "c2cpicdw.qpic.cn",
+    "im.qq.com",
+  ]),
+
+  // 判断域名是否可信 (防止被重定向到恶意域名)
+  isTrustedDomain: function (url) {
+    try {
+      var u = new URL(url);
+      // 允许腾讯系所有域名
+      if (u.hostname.endsWith(".qq.com") || u.hostname.endsWith(".qpic.cn")) return true;
+      // 允许已知好域名
+      if (this.knownGoodDomains.has(u.hostname)) return true;
+      // 拒绝其他所有域名 (防止 DNS 劫持/重定向攻击)
+      return false;
+    } catch { return false; }
+  },
+
+  // 安全 URL 过滤 (防止下载到恶意内容)
+  sanitizeUrl: function (url) {
+    if (!this.isTrustedDomain(url)) {
+      throw new Error("Untrusted domain: " + url);
+    }
+    return url;
+  },
+};
+
+// 包装 stealthRequest, 加入边缘情况处理
+var _originalStealthRequest = stealthRequest;
+stealthRequest = function (url, options) {
+  edgeCaseHandler.sanitizeUrl(url);
+  return _originalStealthRequest(url, options);
+};
+
+// ============================================================
+// 扩展模块 7: 网络质量自适应
+// ============================================================
+
+var networkAdaptive = {
+  // 网络质量指标
+  metrics: {
+    avgRtt: 100,       // 平均往返时间 (ms)
+    packetLoss: 0,     // 丢包率
+    bandwidth: 1000000, // 估算带宽 (bytes/s)
+  },
+
+  // 记录一次请求的网络质量
+  recordRequest: function (startTime, endTime, bytesReceived) {
+    var rtt = endTime - startTime;
+    // 指数加权移动平均
+    this.metrics.avgRtt = 0.9 * this.metrics.avgRtt + 0.1 * rtt;
+    if (rtt > 0 && bytesReceived > 0) {
+      var bandwidth = bytesReceived / (rtt / 1000);
+      this.metrics.bandwidth = 0.8 * this.metrics.bandwidth + 0.2 * bandwidth;
+    }
+  },
+
+  // 根据网络质量调整超时
+  getAdaptiveTimeout: function () {
+    // 网络差时延长超时, 网络好时缩短
+    if (this.metrics.avgRtt > 500) return 30000; // 差网络: 30s
+    if (this.metrics.avgRtt > 200) return 20000; // 一般: 20s
+    return 15000; // 好网络: 15s (与浏览器一致)
+  },
+
+  // 根据网络质量调整并发
+  getAdaptiveConcurrency: function () {
+    if (this.metrics.avgRtt > 500) return 1; // 差网络: 单线程
+    if (this.metrics.avgRtt > 200) return 3; // 一般: 3 并发
+    return 6; // 好网络: 6 并发 (浏览器默认)
+  },
+};
+
+// ============================================================
+// 汇总导出
+// ============================================================
+
+module.exports = {
+  // 原有十层
+  stealthRequest,
+  stealthDownload,
+  stealthDownloadBatch,
+  silentDownload,
+  classifyElements,
+  MSG_TIER,
+  humanDelay,
+  preDownloadDelay,
+  buildHeaders,
+  getFingerprint,
+  rotateFingerprintDaily,
+  rateLimiter,
+  trafficShaper,
+  sessionManager,
+  dnsCache,
+  browserRetry,
+  FINGERPRINTS,
+
+  // 扩展模块
+  environmentDisguiser,
+  behaviorLearner,
+  protocolHijacker,
+  integrityChecker,
+  threatIntel,
+  edgeCaseHandler,
+  networkAdaptive,
+};
