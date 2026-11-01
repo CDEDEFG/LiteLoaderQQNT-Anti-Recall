@@ -6,7 +6,7 @@ export async function onSettingWindowCreated(view) {
   nowConfig = await getNowConfigCached();
 
   const new_navbar_item = `
-    <plugin-menu>
+    <div class="anti-recall-wrapper">
       <setting-item class="config_view">
         <setting-section data-title="主配置">
           <setting-panel>
@@ -342,13 +342,13 @@ export async function onSettingWindowCreated(view) {
 
         </style>
       </div>
-    </plugin-menu>
+    </div>
   `;
 
   const parser = new DOMParser();
 
   const doc2 = parser.parseFromString(new_navbar_item, "text/html");
-  const node2 = doc2.querySelector("plugin-menu");//这里寻找插入的对象
+  const node2 = doc2.querySelector(".anti-recall-wrapper");//这里寻找插入的对象
 
   //清空消息
   node2.querySelector("#clearDb").onclick = async () => {
