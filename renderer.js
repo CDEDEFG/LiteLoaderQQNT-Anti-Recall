@@ -348,7 +348,8 @@ export async function onSettingWindowCreated(view) {
   const parser = new DOMParser();
 
   const doc2 = parser.parseFromString(new_navbar_item, "text/html");
-  const node2 = doc2.querySelector(".anti-recall-wrapper");//这里寻找插入的对象
+  // 必须用 document.importNode, 跨文档 append 的节点不会被渲染
+  const node2 = document.importNode(doc2.querySelector(".anti-recall-wrapper"), true);
 
   //清空消息
   node2.querySelector("#clearDb").onclick = async () => {
