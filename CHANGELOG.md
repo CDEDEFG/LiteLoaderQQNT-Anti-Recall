@@ -1,5 +1,23 @@
 # 更新日志 (Changelog)
 
+## [v0.9.0] - 2026-11-06
+
+### 设置页全面重写
+
+- **全部 9 个开关**改为 LiteLoaderQQNT 原生 setting-switch 自定义元素
+- **绑定方式**改用 is-active 属性 (与官方一致), 不再用 classList.toggle
+- **布局结构**改为官方 setting-item + setting-text + setting-switch
+- **主题色** pick-color 初始值用 nowConfig.mainColor
+- **灰条清理** 撤回恢复后移除残留的 gray-tip-message 类
+
+### 验证
+
+9 个开关全部绑定成功, 初始状态正确, 点击切换 + saveConfig 链路通。
+
+---
+
+
+
 所有版本的更新记录。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
 ---
