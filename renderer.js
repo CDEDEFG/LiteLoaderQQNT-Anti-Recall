@@ -30,138 +30,87 @@ export async function onSettingWindowCreated(view) {
   const new_navbar_item = `
     <div class="anti-recall-wrapper">
       <setting-item class="config_view">
-        <setting-section data-title="主配置">
-          <setting-panel>
-            <setting-list data-direction="column">     
-                <setting-item data-direction="row">
-                  <setting-text>操作</setting-text>
-                    <button id="clearDb" class="q-button q-button--small q-button--secondary">清空已储存的撤回消息</button>
-                </setting-item>
-                <setting-item data-direction="row">
-                  <setting-text>导出</setting-text>
-                    <button id="exportRecalled" class="q-button q-button--small q-button--secondary">导出撤回消息 (JSON)</button>
-                </setting-item>
-                <setting-item data-direction="row">
-                  <setting-text>统计</setting-text>
-                    <button id="showStats" class="q-button q-button--small q-button--secondary">查看撤回统计</button>
-                </setting-item>
-                <setting-item data-direction="row">
-                  <setting-text>归档</setting-text>
-                    <button id="openArchiveDir" class="q-button q-button--small q-button--secondary">打开归档目录</button>
-                </setting-item>
-                <setting-item data-direction="row">
-                  <setting-text>撤回记录</setting-text>
-                    <button id="showRecalledList" class="q-button q-button--small q-button--secondary">浏览撤回记录</button>
-                </setting-item>
-                <setting-item data-direction="row">
-                  <div id="statsPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px; margin-top:8px;">
-                    <div id="statsContent">加载中...</div>
-                  </div>
-                </setting-item>
-                <setting-item data-direction="row">
-                  <div id="recalledListPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px; margin-top:8px; max-height:400px; overflow-y:auto;">
-                    <div id="recalledListContent">加载中...</div>
-                  </div>
-                </setting-item>
-                <setting-item data-direction="row">
-                    <div style="width:90%;" >
-                      <setting-text>是否将撤回消息存入数据库</setting-text>
-                      <span class="secondary-text">数据库不加密，若开启风险自负；若不开启，重启QQ后撤回消息会丢失；开启选项后，反撤回消息才会开始保存；若之前开过，现在关闭，储存的消息不会被删除，需要你手动清理。</span>
-                    </div>
-                    <div id="switchSaveDb" class="q-switch">
-                      <span class="q-switch__handle"></span>
-                    </div>
-                </setting-item>
-                <div class="vertical-list-item">
-                    <div style="width:90%;" >
-                      <h2>是否反撤回自己的消息</h2>
-                      <span class="secondary-text">如果开启，则自己发送的消息也会被反撤回。开启后，从下一条消息开始起生效。</span>
-                    </div>
-                    <div id="switchAntiRecallSelf" class="q-switch">
-                      <span class="q-switch__handle"></span>
-                    </div>
-                </div>
-                <div class="vertical-list-item">
-                    <div style="width:90%;" >
-                      <h2>完全隐身模式</h2>
-                      <span class="secondary-text">最强防护档: 完全禁掉一切网络请求 (连 URL 劫持都不做), 只依赖本地残留文件恢复。撤回的文字/表情不受影响, 图片/视频/语音/文件可能无法显示。比反风控里的「偏执」档更极端。</span>
-                    </div>
-                    <div id="switchDisableImgDownload" class="q-switch">
-                      <span class="q-switch__handle"></span>
-                    </div>
-                </div>
-                <setting-item data-direction="row">
-                  <div>
-                    <h2>内存中消息最多缓存条数</h2>
-                    <span class="secondary-text">修改将自动保存并立即生效；如果过少可能导致消息接受太快时来不及反撤回，如果过多可能导致内存占用过高。</span>
-                  </div>
-                  <div style="width:30%;pointer-events: auto;margin-left:10px;">
-                    <input id="maxMsgLimit" min="1" max="99999999" maxlength="8" class="text_color path-input" style="width:65%;" type="number" value="${
-                  nowConfig.maxMsgSaveLimit == null
-                    ? 10000
-                    : nowConfig.maxMsgSaveLimit
-                        }"/>条
-                  </div>
-                </setting-item>
-    
-                <setting-item data-direction="row">
-                  <div>
-                    <h2>清理内存缓存消息时一次性清理多少</h2>
-                    <span class="secondary-text">修改将自动保存并立即生效；一次性清理过多可能导致某些消息反撤回失败，过少则可能导致内存增长过快。</span>
-                  </div>
-                  <div style="width:30%;pointer-events: auto;margin-left:10px;">
-                    <input id="deletePerTime" min="1" max="99999" maxlength="5" class="text_color path-input" style="width:65%; margin-left: 3px" type="number" value="${
-                  nowConfig.deleteMsgCountPerTime == null
-                    ? 500
-                    : nowConfig.deleteMsgCountPerTime
-                        }"/>条
-                  </div>
-                </setting-item>
-            </setting-list>
 
+        <setting-section data-title="操作">
+          <setting-panel>
+            <setting-list data-direction="column">
+              <setting-item>
+                <setting-text>清空已储存的撤回消息</setting-text>
+                <setting-button data-type="secondary" id="clearDb">清空</setting-button>
+              </setting-item>
+              <setting-item>
+                <setting-text>导出撤回消息 (JSON)</setting-text>
+                <setting-button data-type="secondary" id="exportRecalled">导出</setting-button>
+              </setting-item>
+              <setting-item>
+                <setting-text>查看撤回统计</setting-text>
+                <setting-button data-type="secondary" id="showStats">统计</setting-button>
+              </setting-item>
+              <setting-item>
+                <setting-text>打开归档目录</setting-text>
+                <setting-button data-type="secondary" id="openArchiveDir">打开</setting-button>
+              </setting-item>
+              <setting-item>
+                <setting-text>浏览撤回记录</setting-text>
+                <setting-button data-type="secondary" id="showRecalledList">浏览</setting-button>
+              </setting-item>
+              <setting-item>
+                <div id="statsPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px;">
+                  <div id="statsContent">加载中...</div>
+                </div>
+              </setting-item>
+              <setting-item>
+                <div id="recalledListPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px; max-height:400px; overflow-y:auto;">
+                  <div id="recalledListContent">加载中...</div>
+                </div>
+              </setting-item>
+            </setting-list>
           </setting-panel>
         </setting-section>
 
-        
+        <setting-section data-title="基础配置">
+          <setting-panel>
+            <setting-list data-direction="column">
+              <setting-item>
+                <setting-text>撤回消息存入数据库</setting-text>
+                <setting-text data-type="secondary">重启 QQ 后仍可恢复；数据库不加密</setting-text>
+                <setting-switch id="switchSaveDb"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>反撤回自己的消息</setting-text>
+                <setting-text data-type="secondary">自己发送的消息也会被反撤回</setting-text>
+                <setting-switch id="switchAntiRecallSelf"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>内存中消息最多缓存条数</setting-text>
+                <setting-text data-type="secondary">过多占内存，过少可能漏撤回</setting-text>
+                <input id="maxMsgLimit" class="text_color path-input" type="number" min="1" max="99999999" style="width:100px;"/>
+              </setting-item>
+              <setting-item>
+                <setting-text>超上限时一次清理条数</setting-text>
+                <setting-text data-type="secondary">过多可能漏撤回，过少内存增长快</setting-text>
+                <input id="deletePerTime" class="text_color path-input" type="number" min="1" max="99999" style="width:100px;"/>
+              </setting-item>
+            </setting-list>
+          </setting-panel>
+        </setting-section>
+
         <setting-section data-title="样式配置">
           <setting-panel>
-
             <setting-list data-direction="column">
-
-              <setting-item data-direction="row">
-                <div>
-                  <h2>撤回主题色</h2></h2>
-                  <span class="secondary-text">将会同时影响阴影和“已撤回”提示的颜色</span>
-                </div>
-                <div>
-                  <input type="color" value="${nowConfig.mainColor || '#ff6d6d'}" class="q-button q-button--small q-button--secondary pick-color" />
-                </div>
+              <setting-item>
+                <setting-text>撤回主题色</setting-text>
+                <setting-text data-type="secondary">影响阴影和"已撤回"提示颜色</setting-text>
+                <input type="color" class="pick-color" />
               </setting-item>
-
-              <hr class="horizontal-dividing-line" />          
-
-              <div class="vertical-list-item">
-                <div>
-                  <h2>撤回后消息是否显示阴影</h2>
-                  <span class="secondary-text">修改将自动保存并实时生效</span>
-                </div>
-                <div id="switchShadow" class="q-switch">
-                  <span class="q-switch__handle"></span>
-                </div>
-              </div>
-
-              <hr class="horizontal-dividing-line" />          
-
-              <div class="vertical-list-item">
-                <div>
-                  <h2>撤回后消息下方是否显示“已撤回”提示</h2>
-                  <span class="secondary-text">修改将自动保存并在重新滚动消息后生效</span>
-                </div>
-                <div id="switchTip" class="q-switch">
-                  <span class="q-switch__handle"></span>
-                </div>
-              </div>
-              
+              <setting-item>
+                <setting-text>撤回后显示阴影</setting-text>
+                <setting-switch id="switchShadow"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>撤回后显示"已撤回"提示</setting-text>
+                <setting-switch id="switchTip"></setting-switch>
+              </setting-item>
             </setting-list>
           </setting-panel>
         </setting-section>
@@ -169,40 +118,21 @@ export async function onSettingWindowCreated(view) {
         <setting-section data-title="下载与资源恢复">
           <setting-panel>
             <setting-list data-direction="column">
-              <div class="vertical-list-item">
-                <div>
-                  <h2>启用图片/视频 URL 劫持</h2>
-                  <span class="secondary-text">被撤回图片/视频的地址替换为 CDN 直链, 由 QQ 自己去拉取, 插件不发请求。最自然的恢复方式, 建议开启。</span>
-                </div>
-                <div id="switchUrlHijack" class="q-switch">
-                  <span class="q-switch__handle"></span>
-                </div>
-              </div>
-
-              <hr class="horizontal-dividing-line" />
-
-              <div class="vertical-list-item">
-                <div>
-                  <h2>合并转发消息强制恢复</h2>
-                  <span class="secondary-text">合并转发消息被撤回时, 递归下载所有子消息的资源 (图片/语音/文件)。关闭后只恢复文本内容。</span>
-                </div>
-                <div id="switchMultiForward" class="q-switch">
-                  <span class="q-switch__handle"></span>
-                </div>
-              </div>
-
-              <hr class="horizontal-dividing-line" />
-
-              <setting-item data-direction="row">
-                <div>
-                  <h2>每分钟下载次数上限</h2>
-                  <span class="secondary-text">限制下载频率。建议 60-180, 与正常浏览速度一致。</span>
-                </div>
-                <div style="width:30%;pointer-events: auto;margin-left:10px;">
-                  <input id="maxDownloadPerMinute" min="1" max="999" class="text_color path-input" style="width:65%;" type="number"/>次/分
-                </div>
+              <setting-item>
+                <setting-text>图片/视频 URL 劫持</setting-text>
+                <setting-text data-type="secondary">被撤回资源换 CDN 直链让 QQ 自己拉，插件不发请求</setting-text>
+                <setting-switch id="switchUrlHijack"></setting-switch>
               </setting-item>
-
+              <setting-item>
+                <setting-text>合并转发强制恢复</setting-text>
+                <setting-text data-type="secondary">递归下载合并转发子消息的资源</setting-text>
+                <setting-switch id="switchMultiForward"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>每分钟下载次数上限</setting-text>
+                <setting-text data-type="secondary">建议 60-180，与正常浏览速度一致</setting-text>
+                <input id="maxDownloadPerMinute" class="text_color path-input" type="number" min="1" max="999" style="width:100px;"/>
+              </setting-item>
             </setting-list>
           </setting-panel>
         </setting-section>
@@ -210,73 +140,46 @@ export async function onSettingWindowCreated(view) {
         <setting-section data-title="反风控">
           <setting-panel>
             <setting-list data-direction="column">
-
-              <setting-item data-direction="row">
-                <div>
-                  <h2>反风控模式</h2>
-                  <span class="secondary-text">选择防护策略。日常用「自动」即可。</span>
-                </div>
-                <div style="pointer-events: auto;">
-                  <select id="antiRiskModeSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
-                    <option value="auto">自动 (推荐) — 标准防护, 时间自适应</option>
-                    <option value="strict">严格 — 低速率+强化延迟, 疑似风控环境</option>
-                    <option value="paranoid">偏执 — 插件零直接请求, 仅URL劫持</option>
-                    <option value="off">关闭 — 裸请求, 仅调试</option>
-                  </select>
-                </div>
+              <setting-item>
+                <setting-text>完全隐身模式</setting-text>
+                <setting-text data-type="secondary">零网络请求，仅本地文件恢复；文字表情不受影响</setting-text>
+                <setting-switch id="switchDisableImgDownload"></setting-switch>
               </setting-item>
-
-              <hr class="horizontal-dividing-line" />
-
-              <setting-item data-direction="row">
-                <div>
-                  <h2>伪装等级</h2>
-                  <span class="secondary-text">控制伪装强度。等级越高特征越少, 但延迟略增。</span>
-                </div>
-                <div style="pointer-events: auto;">
-                  <select id="stealthLevelSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
-                    <option value="0">0 — 关闭伪装</option>
-                    <option value="1">1 — 基础 (请求头+延迟)</option>
-                    <option value="2">2 — 标准 (十层防护)</option>
-                    <option value="3">3 — 增强 (AI学习+威胁响应)</option>
-                  </select>
-                </div>
+              <setting-item>
+                <setting-text>反风控模式</setting-text>
+                <setting-text data-type="secondary">日常用「自动」即可</setting-text>
+                <select id="antiRiskModeSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
+                  <option value="auto">自动 — 标准防护，时间自适应</option>
+                  <option value="strict">严格 — 低速率+强化延迟</option>
+                  <option value="paranoid">偏执 — 插件零直接请求，仅URL劫持</option>
+                  <option value="off">关闭 — 裸请求，仅调试</option>
+                </select>
               </setting-item>
-
-              <hr class="horizontal-dividing-line" />
-
-              <div class="vertical-list-item">
-                <div>
-                  <h2>AI 行为学习引擎</h2>
-                  <span class="secondary-text">从历史下载模式学习你的自然节奏, 使伪装更像真人。</span>
-                </div>
-                <div id="switchBehaviorLearning" class="q-switch">
-                  <span class="q-switch__handle"></span>
-                </div>
-              </div>
-
-              <hr class="horizontal-dividing-line" />
-
-              <div class="vertical-list-item">
-                <div>
-                  <h2>威胁情报自动响应</h2>
-                  <span class="secondary-text">检测到 403/429/连接重置时, 自动降低下载速率或暂停。</span>
-                </div>
-                <div id="switchThreatResponse" class="q-switch">
-                  <span class="q-switch__handle"></span>
-                </div>
-              </div>
-
-              <hr class="horizontal-dividing-line" />
-
-              <setting-item data-direction="row">
-                <div style="width:100%;">
-                  <h2>当前反风控状态</h2>
-                  <button id="refreshAntiRiskStatus" class="q-button q-button--small q-button--secondary">刷新状态</button>
-                  <div id="antiRiskStatusPanel" style="margin-top:10px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
-                </div>
+              <setting-item>
+                <setting-text>伪装等级</setting-text>
+                <setting-text data-type="secondary">等级越高特征越少，延迟略增</setting-text>
+                <select id="stealthLevelSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
+                  <option value="0">0 — 关闭伪装</option>
+                  <option value="1">1 — 基础（请求头+延迟）</option>
+                  <option value="2">2 — 标准（十层防护）</option>
+                  <option value="3">3 — 增强（AI学习+威胁响应）</option>
+                </select>
               </setting-item>
-
+              <setting-item>
+                <setting-text>AI 行为学习引擎</setting-text>
+                <setting-text data-type="secondary">学习你的自然节奏，伪装更像真人</setting-text>
+                <setting-switch id="switchBehaviorLearning"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>威胁情报自动响应</setting-text>
+                <setting-text data-type="secondary">检测异常自动降速或暂停</setting-text>
+                <setting-switch id="switchThreatResponse"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>当前反风控状态</setting-text>
+                <setting-button data-type="secondary" id="refreshAntiRiskStatus">刷新状态</setting-button>
+                <div id="antiRiskStatusPanel" style="width:100%; margin-top:8px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
+              </setting-item>
             </setting-list>
           </setting-panel>
         </setting-section>
@@ -285,104 +188,13 @@ export async function onSettingWindowCreated(view) {
     </div>
   `;
 
-  // style 标签单独注入到 document.head, 避免 div 内嵌套 style 导致渲染器跳过
-  const styleEl = document.createElement("style");
-  styleEl.id = "anti-recall-config-css";
-  styleEl.textContent = `
-    .img-hidden { display: none; }
-    .path-input {
-      align-self: normal; flex: 1; border-radius: 4px;
-      margin-right: 16px; transition: all 100ms ease-out;
-      border: 1px solid #464646;
-    }
-    .path-input:focus { padding-left: 4px; }
-    .bq-icon { height: 16px; width: 16px; }
-    .config_view { margin: 20px; }
-    .config_view h1 {
-      color: var(--text_primary); font-weight: var(--font-bold);
-      font-size: min(var(--font_size_3), 18px);
-      line-height: min(var(--line_height_3), 24px);
-      padding: 0px 16px; margin-bottom: 8px;
-    }
-    .config_view .wrap {
-      background-color: var(--fill_light_primary, var(--fg_white));
-      border-radius: 8px; font-size: min(var(--font_size_3), 18px);
-      line-height: min(var(--line_height_3), 24px);
-      margin-bottom: 20px; overflow: hidden; padding: 0px 16px;
-    }
-    .config_view .vertical-list-item {
-      margin: 12px 0px; display: flex;
-      justify-content: space-between; align-items: center;
-    }
-    .config_view .horizontal-dividing-line {
-      border: unset; margin: unset; height: 1px;
-      background-color: rgba(127,127,127,0.15);
-    }
-    .config_view .vertical-dividing-line {
-      border: unset; margin: unset; width: 1px;
-      background-color: rgba(127,127,127,0.15);
-    }
-    .config_view .ops-btns { display: flex; }
-    .config_view .hidden { display: none !important; }
-    .config_view .disabled { pointer-events: none; opacity: 0.5; }
-    .config_view .secondary-text {
-      color: var(--text_secondary);
-      font-size: min(var(--font_size_2), 16px);
-      line-height: min(var(--line_height_2), 22px);
-      margin-top: 4px;
-    }
-    .config_view .wrap .title {
-      cursor: pointer; font-size: min(var(--font_size_3), 18px);
-      line-height: min(var(--line_height_3), 24px);
-    }
-    .config_view .wrap .title svg {
-      width: 1em; height: 1em; transform: rotate(-180deg);
-      transition: transform 0.2s ease;
-    }
-    .config_view .wrap .title svg.is-fold { transform: rotate(0deg); }
-    .config_view .modal-window {
-      display: flex; justify-content: center; align-items: center;
-      position: fixed; top: 0; right: 0; bottom: 0; left: 0;
-      z-index: 999; background-color: rgba(0,0,0,0.5);
-    }
-    .config_view .modal-dialog {
-      width: 480px; border-radius: 8px;
-      background-color: var(--bg_bottom_standard, var(--fg_white));
-    }
-    .config_view .modal-dialog header {
-      font-size: 12px; height: 30px; line-height: 30px; text-align: center;
-    }
-    .config_view .modal-dialog main { padding: 0px 16px; }
-    .config_view .modal-dialog main p { margin: 8px 0px; }
-    .config_view .modal-dialog footer {
-      height: 30px; display: flex;
-      justify-content: right; align-items: center;
-    }
-    .config_view .modal-dialog .q-icon { width: 22px; height: 22px; margin: 8px; }
-    .config_view .versions .wrap {
-      display: flex; justify-content: space-between; padding: 16px 0px;
-    }
-    .config_view .versions .wrap>div {
-      flex: 1; margin: 0px 10px; border-radius: 8px; text-align: center;
-    }
-    .config_view .path .path-input {
-      align-self: normal; flex: 1; border-radius: 4px;
-      margin-right: 16px; transition: all 100ms ease-out;
-    }
-    .config_view .path .path-input:focus {
-      padding-left: 5px; background-color: rgba(127,127,127,0.1);
-    }
-    .config_view .list-ctl .ops-selects { display: flex; gap: 8px; }
-    @media (prefers-color-scheme: light) { .text_color { color: black; } }
-    @media (prefers-color-scheme: dark) { .text_color { color: white; } }
-  `;
-  // 先移除旧的再插入, 防止重复
-  var oldStyle = document.getElementById("anti-recall-config-css");
-  if (oldStyle) oldStyle.remove();
-  document.head.appendChild(styleEl);
-
   view.innerHTML = new_navbar_item;
   const node2 = view.querySelector(".anti-recall-wrapper");
+  // setting-switch helper: is-active attribute controls on/off
+  function setSwitch(el, on) { if (on) el.setAttribute("is-active", ""); else el.removeAttribute("is-active"); }
+  function isSwitchOn(el) { return el.hasAttribute("is-active"); }
+  function toggleSwitch(el) { if (el.hasAttribute("is-active")) { el.removeAttribute("is-active"); return false; } else { el.setAttribute("is-active", ""); return true; } }
+
 
   //清空消息
   node2.querySelector("#clearDb").onclick = async () => {
@@ -488,112 +300,50 @@ export async function onSettingWindowCreated(view) {
 
   //存数据库开关
   var q_switch_savedb = node2.querySelector("#switchSaveDb");
-
-  if (nowConfig.saveDb == null || nowConfig.saveDb == true) {
-    q_switch_savedb.classList.toggle("is-active");
-  }
-
+  setSwitch(q_switch_savedb, nowConfig.saveDb == true);
   q_switch_savedb.addEventListener("click", async () => {
-    if (q_switch_savedb.classList.contains("is-active")) {
-      nowConfig.saveDb = false;
-    } else {
-      nowConfig.saveDb = true;
-    }
-    q_switch_savedb.classList.toggle("is-active");
+    nowConfig.saveDb = toggleSwitch(q_switch_savedb);
     await window.anti_recall.saveConfig(nowConfig);
   });
-
-  //反撤回自己消息开关
   var q_switch_antiself = node2.querySelector("#switchAntiRecallSelf");
-
-  if (nowConfig.isAntiRecallSelfMsg == true) {
-    q_switch_antiself.classList.toggle("is-active");
-  }
-
+  setSwitch(q_switch_antiself, nowConfig.isAntiRecallSelfMsg == true);
   q_switch_antiself.addEventListener("click", async () => {
-    if (q_switch_antiself.classList.contains("is-active")) {
-      nowConfig.isAntiRecallSelfMsg = false;
-    } else {
-      nowConfig.isAntiRecallSelfMsg = true;
-    }
-    q_switch_antiself.classList.toggle("is-active");
+    nowConfig.isAntiRecallSelfMsg = toggleSwitch(q_switch_antiself);
     await window.anti_recall.saveConfig(nowConfig);
   });
-
-  //防风控开关
   var q_switch_nodl = node2.querySelector("#switchDisableImgDownload");
-
-  if (nowConfig.disableImgDownload == true) {
-    q_switch_nodl.classList.toggle("is-active");
-  }
-
+  setSwitch(q_switch_nodl, nowConfig.disableImgDownload == true);
   q_switch_nodl.addEventListener("click", async () => {
-    if (q_switch_nodl.classList.contains("is-active")) {
-      nowConfig.disableImgDownload = false;
-    } else {
-      nowConfig.disableImgDownload = true;
-    }
-    q_switch_nodl.classList.toggle("is-active");
+    nowConfig.disableImgDownload = toggleSwitch(q_switch_nodl);
     await window.anti_recall.saveConfig(nowConfig);
   });
-
-  //阴影开关
   var q_switch_shadow = node2.querySelector("#switchShadow");
-
-  if (nowConfig.enableShadow == null || nowConfig.enableShadow == true) {
-    q_switch_shadow.classList.toggle("is-active");
-  }
-
+  setSwitch(q_switch_shadow, nowConfig.enableShadow !== false);
   q_switch_shadow.addEventListener("click", async () => {
-    if (q_switch_shadow.classList.contains("is-active")) {
-      nowConfig.enableShadow = false;
-    } else {
-      nowConfig.enableShadow = true;
-    }
-    q_switch_shadow.classList.toggle("is-active");
+    nowConfig.enableShadow = toggleSwitch(q_switch_shadow);
     await window.anti_recall.saveConfig(nowConfig);
   });
-
-  //提示开关
   var q_switch_tip = node2.querySelector("#switchTip");
-
-  if (nowConfig.enableTip == null || nowConfig.enableTip == true) {
-    q_switch_tip.classList.toggle("is-active");
-  }
-
+  setSwitch(q_switch_tip, nowConfig.enableTip !== false);
   q_switch_tip.addEventListener("click", async () => {
-    if (q_switch_tip.classList.contains("is-active")) {
-      //取消
-      nowConfig.enableTip = false;
-    } else {
-      //重新设置
-      nowConfig.enableTip = true;
-    }
-    q_switch_tip.classList.toggle("is-active");
+    nowConfig.enableTip = toggleSwitch(q_switch_tip);
     await window.anti_recall.saveConfig(nowConfig);
   });
-
   // ===== 下载与资源恢复 =====
 
   // URL 劫持开关
   var q_switch_urlhijack = node2.querySelector("#switchUrlHijack");
-  if (nowConfig.enableUrlHijack !== false) {
-    q_switch_urlhijack.classList.add("is-active");
-  }
+  setSwitch(q_switch_urlhijack, nowConfig.enableUrlHijack != false);
   q_switch_urlhijack.addEventListener("click", async () => {
-    nowConfig.enableUrlHijack = !q_switch_urlhijack.classList.contains("is-active");
-    q_switch_urlhijack.classList.toggle("is-active");
+    nowConfig.enableUrlHijack = toggleSwitch(q_switch_urlhijack);
     await window.anti_recall.saveConfig(nowConfig);
   });
 
   // 合并转发强制恢复开关
   var q_switch_multiforward = node2.querySelector("#switchMultiForward");
-  if (nowConfig.enableMultiForwardDownload !== false) {
-    q_switch_multiforward.classList.add("is-active");
-  }
+  setSwitch(q_switch_multiforward, nowConfig.enableMultiForwardDownload != false);
   q_switch_multiforward.addEventListener("click", async () => {
-    nowConfig.enableMultiForwardDownload = !q_switch_multiforward.classList.contains("is-active");
-    q_switch_multiforward.classList.toggle("is-active");
+    nowConfig.enableMultiForwardDownload = toggleSwitch(q_switch_multiforward);
     await window.anti_recall.saveConfig(nowConfig);
   });
 
@@ -631,23 +381,17 @@ export async function onSettingWindowCreated(view) {
 
   // AI 行为学习开关
   var q_switch_learning = node2.querySelector("#switchBehaviorLearning");
-  if (nowConfig.enableBehaviorLearning !== false) {
-    q_switch_learning.classList.add("is-active");
-  }
+  setSwitch(q_switch_learning, nowConfig.enableBehaviorLearning != false);
   q_switch_learning.addEventListener("click", async () => {
-    nowConfig.enableBehaviorLearning = !q_switch_learning.classList.contains("is-active");
-    q_switch_learning.classList.toggle("is-active");
+    nowConfig.enableBehaviorLearning = toggleSwitch(q_switch_learning);
     await window.anti_recall.saveConfig(nowConfig);
   });
 
   // 威胁响应开关
   var q_switch_threat = node2.querySelector("#switchThreatResponse");
-  if (nowConfig.enableThreatResponse !== false) {
-    q_switch_threat.classList.add("is-active");
-  }
+  setSwitch(q_switch_threat, nowConfig.enableThreatResponse != false);
   q_switch_threat.addEventListener("click", async () => {
-    nowConfig.enableThreatResponse = !q_switch_threat.classList.contains("is-active");
-    q_switch_threat.classList.toggle("is-active");
+    nowConfig.enableThreatResponse = toggleSwitch(q_switch_threat);
     await window.anti_recall.saveConfig(nowConfig);
   });
 
