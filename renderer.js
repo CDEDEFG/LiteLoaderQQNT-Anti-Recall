@@ -3,12 +3,11 @@ var recalledMsgList = [];
 var nowConfig = {};
 
 export async function onSettingWindowCreated(view) {
-  console.log("[Anti-Recall] onSettingWindowCreated called, view:", view);
-  // 不依赖传入的 view, 直接找/创建容器
-  // LiteLoader 会把 view 存为 div.tab-view.anti_recall
-  // 但也可能 view 不在 DOM 里, 所以等它出现再注入
-  if (!view || !(view instanceof HTMLElement)) {
-    console.log("[Anti-Recall] view invalid, will use DOM query");
+  // Duck-typing 检查: 不用 instanceof (跨 realm 的 DOM 对象 instanceof 会误判)
+  function isValidView(v) {
+    return v && typeof v === "object" && typeof v.innerHTML === "string" && typeof v.querySelector === "function";
+  }
+  if (!isValidView(view)) {
     view = document.querySelector(".tab-view.anti_recall");
   }
   if (!view) {
@@ -690,7 +689,7 @@ async function patchCss() {
             }
         `;
   stylee.innerHTML = sHtml;
-  document.getElementsByTagName("head").item(0).appendChild(stylee);
+  document.getElementsByTagName("head")[0].appendChild(stylee);
 }
 
 onLoad();
