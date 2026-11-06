@@ -197,17 +197,17 @@ export async function onSettingWindowCreated(view) {
 
 
   //清空消息
-  node2.querySelector("#clearDb").onclick = async () => {
+  node2.querySelector("#clearDb").addEventListener("click", async () => {
     await window.anti_recall.clearDb();
-  };
+  });
 
   //导出撤回消息
-  node2.querySelector("#exportRecalled").onclick = async () => {
+  node2.querySelector("#exportRecalled").addEventListener("click", async () => {
     await window.anti_recall.exportRecalled();
-  };
+  });
 
   //撤回统计
-  node2.querySelector("#showStats").onclick = async () => {
+  node2.querySelector("#showStats").addEventListener("click", async () => {
     var panel = node2.querySelector("#statsPanel");
     var content = node2.querySelector("#statsContent");
     if (panel.style.display === "none") {
@@ -231,15 +231,15 @@ export async function onSettingWindowCreated(view) {
     } else {
       panel.style.display = "none";
     }
-  };
+  });
 
   //打开归档目录
-  node2.querySelector("#openArchiveDir").onclick = async () => {
+  node2.querySelector("#openArchiveDir").addEventListener("click", async () => {
     await window.anti_recall.openArchiveDir();
-  };
+  });
 
   //浏览撤回记录
-  node2.querySelector("#showRecalledList").onclick = async () => {
+  node2.querySelector("#showRecalledList").addEventListener("click", async () => {
     var panel = node2.querySelector("#recalledListPanel");
     var content = node2.querySelector("#recalledListContent");
     if (panel.style.display === "none") {
@@ -268,7 +268,7 @@ export async function onSettingWindowCreated(view) {
     } else {
       panel.style.display = "none";
     }
-  };
+  });
 
   node2.querySelector("#maxMsgLimit").onblur = async () => {
     var limit = parseFloat(node2.querySelector("#maxMsgLimit").value);
@@ -359,7 +359,7 @@ export async function onSettingWindowCreated(view) {
     }
     nowConfig.maxDownloadPerMinute = v;
     await window.anti_recall.saveConfig(nowConfig);
-  };
+  });
 
   // ===== 反风控 =====
 
@@ -396,7 +396,7 @@ export async function onSettingWindowCreated(view) {
   });
 
   // 反风控状态展示
-  node2.querySelector("#refreshAntiRiskStatus").onclick = async () => {
+  node2.querySelector("#refreshAntiRiskStatus").addEventListener("click", async () => {
     var panel = node2.querySelector("#antiRiskStatusPanel");
     try {
       var status = await window.anti_recall.getAntiRiskStatus();
@@ -411,7 +411,7 @@ export async function onSettingWindowCreated(view) {
       panel.style.display = "block";
       panel.innerHTML = "获取失败: " + e.message;
     }
-  };
+  });
 }
 
 async function patchCss() {
@@ -645,7 +645,7 @@ async function onLoad() {
         attributes: false,
         childList: true,
         subtree: true,
-      };
+      });
       observer.observe(targetNode, config);
     }
   }, 100);
