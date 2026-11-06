@@ -475,7 +475,8 @@ async function patchCss() {
                 left: 0;
                 font-size: 12px;
                 white-space: nowrap;
-                color: var(--text-color);
+                color: var(--anti-recall-color);
+                text-shadow: 0px 0px 4px rgba(0,0,0,0.3), 0px 0px 4px rgba(255,255,255,0.3);
                 background-color: var(--background-color-05);
                 backdrop-filter: blur(28px);
                 padding: 4px 8px;
@@ -486,7 +487,6 @@ async function patchCss() {
                 transform: translateX(-30%);
                 opacity: 0;
                 pointer-events: none;
-                color: var(--anti-recall-color);
             }
         `;
   stylee.innerHTML = sHtml;
