@@ -46,8 +46,21 @@ export async function onSettingWindowCreated(view) {
                     <button id="showStats" class="q-button q-button--small q-button--secondary">查看撤回统计</button>
                 </setting-item>
                 <setting-item data-direction="row">
+                  <setting-text>归档</setting-text>
+                    <button id="openArchiveDir" class="q-button q-button--small q-button--secondary">打开归档目录</button>
+                </setting-item>
+                <setting-item data-direction="row">
+                  <setting-text>撤回记录</setting-text>
+                    <button id="showRecalledList" class="q-button q-button--small q-button--secondary">浏览撤回记录</button>
+                </setting-item>
+                <setting-item data-direction="row">
                   <div id="statsPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px; margin-top:8px;">
                     <div id="statsContent">加载中...</div>
+                  </div>
+                </setting-item>
+                <setting-item data-direction="row">
+                  <div id="recalledListPanel" style="display:none; width:100%; padding:10px; background:var(--fill_light_primary); border-radius:8px; margin-top:8px; max-height:400px; overflow-y:auto;">
+                    <div id="recalledListContent">加载中...</div>
                   </div>
                 </setting-item>
                 <setting-item data-direction="row">
@@ -70,8 +83,8 @@ export async function onSettingWindowCreated(view) {
                 </div>
                 <div class="vertical-list-item">
                     <div style="width:90%;" >
-                      <h2>防风控最小特征模式</h2>
-                      <span class="secondary-text">开启后，不主动链接腾讯 CDN/rkey 服务重下载过期图片/语音/视频，完全只依赖本地残留文件。撤回的文字/普通表情不受影响，仅富媒体可能无法显示。</span>
+                      <h2>完全隐身模式</h2>
+                      <span class="secondary-text">最强防护档: 完全禁掉一切网络请求 (连 URL 劫持都不做), 只依赖本地残留文件恢复。撤回的文字/表情不受影响, 图片/视频/语音/文件可能无法显示。比反风控里的「偏执」档更极端。</span>
                     </div>
                     <div id="switchDisableImgDownload" class="q-switch">
                       <span class="q-switch__handle"></span>
@@ -400,6 +413,43 @@ export async function onSettingWindowCreated(view) {
         }
         html += `</div>`;
         content.innerHTML = html;
+      } catch (e) {
+        content.innerHTML = "加载失败: " + e.message;
+      }
+    } else {
+      panel.style.display = "none";
+    }
+  };
+
+  //打开归档目录
+  node2.querySelector("#openArchiveDir").onclick = async () => {
+    await window.anti_recall.openArchiveDir();
+  };
+
+  //浏览撤回记录
+  node2.querySelector("#showRecalledList").onclick = async () => {
+    var panel = node2.querySelector("#recalledListPanel");
+    var content = node2.querySelector("#recalledListContent");
+    if (panel.style.display === "none") {
+      panel.style.display = "block";
+      content.innerHTML = "加载中...";
+      try {
+        var msgs = await window.anti_recall.getRecalledMsgs();
+        if (!msgs || msgs.length === 0) {
+          content.innerHTML = "暂无撤回消息";
+        } else {
+          var html = `<div style="font-size:13px; line-height:1.6;">`;
+          msgs.slice(0, 50).forEach((m, i) => {
+            var time = m.recallTime ? new Date(m.recallTime * 1000).toLocaleString() : "未知时间";
+            html += `<div style="padding:6px 8px; margin:4px 0; background:var(--bg_bottom_standard); border-radius:6px; border-left:3px solid var(--fill_light_primary);">
+              <div style="color:var(--text_secondary); font-size:11px;">#${i+1} · ${m.sender} · ${time}</div>
+              <div style="color:var(--text_primary); margin-top:2px; word-break:break-all;">${m.preview}</div>
+            </div>`;
+          });
+          if (msgs.length > 50) html += `<div style="color:var(--text_secondary); text-align:center; padding:8px;">仅显示前 50 条, 共 ${msgs.length} 条</div>`;
+          html += `</div>`;
+          content.innerHTML = html;
+        }
       } catch (e) {
         content.innerHTML = "加载失败: " + e.message;
       }

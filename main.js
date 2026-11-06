@@ -9,7 +9,7 @@
 // 拦截点只位于主进程发往渲染进程的本地 IPC, 不触碰 NT 内核的收发与确认流程
 const fs = require("fs");
 const path = require("path");
-const { app, ipcMain, dialog } = require("electron");
+const { app, ipcMain, dialog, shell } = require("electron");
 
 const config = require("./src/config.js");
 const database = require("./src/database.js");
@@ -142,6 +142,41 @@ async function onLoad() {
         learnedStd: Math.round(stealthNet.learner.learnedStd),
       },
     };
+  });
+
+  // IPC: 打开归档目录
+  ipcMain.handle("LiteLoader.anti_recall.openArchiveDir", async () => {
+    var archiveDir = path.join(pluginDataDir, "archive");
+    if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+    await shell.openPath(archiveDir);
+  });
+
+  // IPC: 浏览撤回记录 (返回轻量列表供设置页展示)
+  ipcMain.handle("LiteLoader.anti_recall.getRecalledMsgs", async () => {
+    var list = msgCache.getRecalledMsgList();
+    return list.map(function (item) {
+      var msg = item.msg || {};
+      var previewText = "";
+      if (msg.elements) {
+        for (var el of msg.elements) {
+          if (el && el.textElement && el.textElement.content) {
+            previewText += el.textElement.content;
+          } else if (el && el.picElement) previewText += "[图片]";
+          else if (el && el.videoElement) previewText += "[视频]";
+          else if (el && el.pttElement) previewText += "[语音]";
+          else if (el && el.fileElement) previewText += "[文件]";
+          else if (el && el.faceElement) previewText += "[表情]";
+        }
+      }
+      if (!previewText) previewText = "[无内容]";
+      return {
+        id: item.id,
+        sender: item.sender || "未知",
+        preview: previewText.substring(0, 100),
+        recallTime: msg.recallTime || null,
+        msgSeq: msg.msgSeq || null,
+      };
+    }).reverse(); // 最新的在前
   });
 
   // IPC: 撤回统计
