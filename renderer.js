@@ -359,7 +359,7 @@ export async function onSettingWindowCreated(view) {
     }
     nowConfig.maxDownloadPerMinute = v;
     await window.anti_recall.saveConfig(nowConfig);
-  });
+  };
 
   // ===== 反风控 =====
 
@@ -645,7 +645,7 @@ async function onLoad() {
         attributes: false,
         childList: true,
         subtree: true,
-      });
+      };
       observer.observe(targetNode, config);
     }
   }, 100);
