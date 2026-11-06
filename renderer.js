@@ -505,7 +505,7 @@ async function getNowConfigCached() {
     return cachedConfig;
   }
   try {
-    cachedConfig = await window.anti_recall.getNowConfig();
+    cachedConfig = (await window.anti_recall.getNowConfig()) || {};
     configLastFetch = now;
     return cachedConfig;
   } catch (e) {
@@ -593,18 +593,18 @@ async function onLoad() {
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && pullTimer != null) {
         (async () => {
-          try {
-            if (typeof anti_recall.requestRecallList !== "function") return;
-            var list = await anti_recall.requestRecallList();
-            if (Array.isArray(list) && list.length > 0) {
-              var merged = Array.from(new Set([...(recalledMsgList || []), ...list]));
-              if (merged.length > (recalledMsgList || []).length) {
-                recalledMsgList = merged;
-                await render();
-              }
+        try {
+          if (typeof anti_recall.requestRecallList !== "function") return;
+          var list = await anti_recall.requestRecallList();
+          if (Array.isArray(list) && list.length > 0) {
+            var merged = Array.from(new Set([...(recalledMsgList || []), ...list]));
+            if (merged.length > (recalledMsgList || []).length) {
+              recalledMsgList = merged;
+              await render();
             }
-          } catch (e) {}
-        })();
+          }
+        } catch (e) {}
+      })();
       }
     });
   }
@@ -656,6 +656,8 @@ async function onLoad() {
     var elements = document
       .querySelector(".chat-msg-area__vlist")
       ?.querySelectorAll(".ml-item");
+
+    if (!elements) return;
 
     nowConfig = await getNowConfigCached();
 
