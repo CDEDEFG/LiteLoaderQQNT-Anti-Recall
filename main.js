@@ -17,6 +17,7 @@ const msgCache = require("./src/msgCache.js");
 const recallHandler = require("./src/recallHandler.js");
 const downloadQueue = require("./src/downloadQueue.js");
 const ipcScanner = require("./src/ipcScanner.js");
+const stealthNet = require("./src/stealthNet.js");
 
 const { ImgDownloader } = require("./imgDownloader.js");
 const { NtSnapshotManager } = require("./ntSnapshotManager.js");
@@ -33,12 +34,13 @@ const imgDownloader = new ImgDownloader();
 const snapshotManager = new NtSnapshotManager();
 
 // 模块间注入
-[database, msgCache, recallHandler, downloadQueue, ipcScanner].forEach((m) =>
-  m.setOutput(output)
+[database, msgCache, recallHandler, downloadQueue, ipcScanner, stealthNet].forEach((m) =>
+  m.setOutput ? m.setOutput(output) : null
 );
 msgCache.setConfigGetter(config.get);
 recallHandler.setConfigGetter(config.get);
 downloadQueue.setDownloader(imgDownloader);
+stealthNet.setConfigGetter(config.get); // 反风控引擎接管配置
 recallHandler.setNotifyRenderer(ipcScanner.notifyRenderer);
 ipcScanner.setNotifyRenderer(ipcScanner.notifyRenderer);
 ipcScanner.setSnapshotHook((a) => {
@@ -127,6 +129,19 @@ async function onLoad() {
         });
       }
     }
+  });
+
+  // IPC: 反风控状态 (设置页展示用)
+  ipcMain.handle("LiteLoader.anti_recall.getAntiRiskStatus", async () => {
+    return {
+      policy: stealthNet.getPolicy(),
+      threat: stealthNet.getThreatStatus(),
+      learner: {
+        samples: stealthNet.learner.samples.length,
+        learnedAvg: Math.round(stealthNet.learner.learnedAvg),
+        learnedStd: Math.round(stealthNet.learner.learnedStd),
+      },
+    };
   });
 
   // IPC: 撤回统计

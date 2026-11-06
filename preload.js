@@ -23,5 +23,7 @@ contextBridge.exposeInMainWorld("anti_recall", {
     exportRecalled: () =>
         ipcRenderer.invoke("LiteLoader.anti_recall.exportRecalled"),
     getRecallStats: () =>
-        ipcRenderer.invoke("LiteLoader.anti_recall.getRecallStats")
+        ipcRenderer.invoke("LiteLoader.anti_recall.getRecallStats"),
+    getAntiRiskStatus: () =>
+        ipcRenderer.invoke("LiteLoader.anti_recall.getAntiRiskStatus")
 });

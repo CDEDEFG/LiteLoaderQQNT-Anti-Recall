@@ -365,7 +365,7 @@ class ImgDownloader {
       return;
     }
 
-    // 分级判断
+    // 分级判断 (stealthNet v4)
     const stealth = require("./src/stealthNet.js");
     const cls = stealth.classifyElements(msgItem.elements);
 
@@ -375,11 +375,18 @@ class ImgDownloader {
       return;
     }
 
-    // TIER 2/3: 核心资源, 必须恢复
-    // 先尝试 URL 劫持 (图片/视频 → CDN 直链, QQ 自己拉)
-    this.hijackMediaUrls(msgItem);
+    // URL 劫持: 由配置控制 (paranoid 模式下这也是唯一恢复方式)
+    if (stealth.shouldHijackUrls()) {
+      this.hijackMediaUrls(msgItem);
+    }
 
-    // 然后伪装下载 (备份到本地, 防止 CDN 过期)
+    // 直接下载: 由策略控制 (paranoid/off 模式下插件不发请求)
+    if (!stealth.shouldDownloadResources(msgItem)) {
+      output("Policy " + stealth.resolvePolicy().name + ": skip direct download, URL-hijack only");
+      return;
+    }
+
+    // 伪装下载 (备份到本地, 防止 CDN 过期)
     for (const el of msgItem.elements) {
       try {
         if (el?.picElement) await this.downloadPicElement(el.picElement, msgItem);
@@ -387,9 +394,13 @@ class ImgDownloader {
         else if (el?.videoElement) await this.downloadVideoElement(el.videoElement, msgItem);
         else if (el?.fileElement) await this.downloadFileElement(el.fileElement, msgItem);
         else if (el?.multiForwardMsgElement) {
-          // TIER 3: 合并转发, 强制递归下载所有子消息
-          output("TIER 3 multiForward: force recursive download of sub-msgs");
-          await this.downloadMultiForwardElement(el.multiForwardMsgElement, msgItem);
+          // TIER 3: 由配置控制是否强制递归
+          if (stealth.shouldProcessMultiForward()) {
+            output("TIER 3 multiForward: force recursive download of sub-msgs");
+            await this.downloadMultiForwardElement(el.multiForwardMsgElement, msgItem);
+          } else {
+            output("multiForward: direct download disabled by config");
+          }
         }
         // 大表情/小程序: 不主动下载
       } catch (e) {

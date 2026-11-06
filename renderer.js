@@ -153,6 +153,122 @@ export async function onSettingWindowCreated(view) {
             </setting-list>
           </setting-panel>
         </setting-section>
+
+        <setting-section data-title="下载与资源恢复">
+          <setting-panel>
+            <setting-list data-direction="column">
+              <div class="vertical-list-item">
+                <div>
+                  <h2>启用图片/视频 URL 劫持</h2>
+                  <span class="secondary-text">被撤回图片/视频的地址替换为 CDN 直链, 由 QQ 自己去拉取, 插件不发请求。最自然的恢复方式, 建议开启。</span>
+                </div>
+                <div id="switchUrlHijack" class="q-switch">
+                  <span class="q-switch__handle"></span>
+                </div>
+              </div>
+
+              <hr class="horizontal-dividing-line" />
+
+              <div class="vertical-list-item">
+                <div>
+                  <h2>合并转发消息强制恢复</h2>
+                  <span class="secondary-text">合并转发消息被撤回时, 递归下载所有子消息的资源 (图片/语音/文件)。关闭后只恢复文本内容。</span>
+                </div>
+                <div id="switchMultiForward" class="q-switch">
+                  <span class="q-switch__handle"></span>
+                </div>
+              </div>
+
+              <hr class="horizontal-dividing-line" />
+
+              <setting-item data-direction="row">
+                <div>
+                  <h2>每分钟下载次数上限</h2>
+                  <span class="secondary-text">限制下载频率。建议 60-180, 与正常浏览速度一致。</span>
+                </div>
+                <div style="width:30%;pointer-events: auto;margin-left:10px;">
+                  <input id="maxDownloadPerMinute" min="1" max="999" class="text_color path-input" style="width:65%;" type="number"/>次/分
+                </div>
+              </setting-item>
+
+            </setting-list>
+          </setting-panel>
+        </setting-section>
+
+        <setting-section data-title="反风控">
+          <setting-panel>
+            <setting-list data-direction="column">
+
+              <setting-item data-direction="row">
+                <div>
+                  <h2>反风控模式</h2>
+                  <span class="secondary-text">选择防护策略。日常用「自动」即可。</span>
+                </div>
+                <div style="pointer-events: auto;">
+                  <select id="antiRiskModeSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
+                    <option value="auto">自动 (推荐) — 标准防护, 时间自适应</option>
+                    <option value="strict">严格 — 低速率+强化延迟, 疑似风控环境</option>
+                    <option value="paranoid">偏执 — 插件零直接请求, 仅URL劫持</option>
+                    <option value="off">关闭 — 裸请求, 仅调试</option>
+                  </select>
+                </div>
+              </setting-item>
+
+              <hr class="horizontal-dividing-line" />
+
+              <setting-item data-direction="row">
+                <div>
+                  <h2>伪装等级</h2>
+                  <span class="secondary-text">控制伪装强度。等级越高特征越少, 但延迟略增。</span>
+                </div>
+                <div style="pointer-events: auto;">
+                  <select id="stealthLevelSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
+                    <option value="0">0 — 关闭伪装</option>
+                    <option value="1">1 — 基础 (请求头+延迟)</option>
+                    <option value="2">2 — 标准 (十层防护)</option>
+                    <option value="3">3 — 增强 (AI学习+威胁响应)</option>
+                  </select>
+                </div>
+              </setting-item>
+
+              <hr class="horizontal-dividing-line" />
+
+              <div class="vertical-list-item">
+                <div>
+                  <h2>AI 行为学习引擎</h2>
+                  <span class="secondary-text">从历史下载模式学习你的自然节奏, 使伪装更像真人。</span>
+                </div>
+                <div id="switchBehaviorLearning" class="q-switch">
+                  <span class="q-switch__handle"></span>
+                </div>
+              </div>
+
+              <hr class="horizontal-dividing-line" />
+
+              <div class="vertical-list-item">
+                <div>
+                  <h2>威胁情报自动响应</h2>
+                  <span class="secondary-text">检测到 403/429/连接重置时, 自动降低下载速率或暂停。</span>
+                </div>
+                <div id="switchThreatResponse" class="q-switch">
+                  <span class="q-switch__handle"></span>
+                </div>
+              </div>
+
+              <hr class="horizontal-dividing-line" />
+
+              <setting-item data-direction="row">
+                <div style="width:100%;">
+                  <h2>当前反风控状态</h2>
+                  <button id="refreshAntiRiskStatus" class="q-button q-button--small q-button--secondary">刷新状态</button>
+                  <div id="antiRiskStatusPanel" style="margin-top:10px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
+                </div>
+              </setting-item>
+
+            </setting-list>
+          </setting-panel>
+        </setting-section>
+
       </div>
     </div>
   `;
@@ -407,6 +523,102 @@ export async function onSettingWindowCreated(view) {
     q_switch_tip.classList.toggle("is-active");
     await window.anti_recall.saveConfig(nowConfig);
   });
+
+  // ===== 下载与资源恢复 =====
+
+  // URL 劫持开关
+  var q_switch_urlhijack = node2.querySelector("#switchUrlHijack");
+  if (nowConfig.enableUrlHijack !== false) {
+    q_switch_urlhijack.classList.add("is-active");
+  }
+  q_switch_urlhijack.addEventListener("click", async () => {
+    nowConfig.enableUrlHijack = !q_switch_urlhijack.classList.contains("is-active");
+    q_switch_urlhijack.classList.toggle("is-active");
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // 合并转发强制恢复开关
+  var q_switch_multiforward = node2.querySelector("#switchMultiForward");
+  if (nowConfig.enableMultiForwardDownload !== false) {
+    q_switch_multiforward.classList.add("is-active");
+  }
+  q_switch_multiforward.addEventListener("click", async () => {
+    nowConfig.enableMultiForwardDownload = !q_switch_multiforward.classList.contains("is-active");
+    q_switch_multiforward.classList.toggle("is-active");
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // 每分钟下载上限
+  var dlLimitInput = node2.querySelector("#maxDownloadPerMinute");
+  dlLimitInput.value = nowConfig.maxDownloadPerMinute != null ? nowConfig.maxDownloadPerMinute : 120;
+  dlLimitInput.onblur = async () => {
+    var v = parseInt(dlLimitInput.value);
+    if (isNaN(v) || v < 1 || v > 999) {
+      alert("请输入 1-999 之间的数字");
+      dlLimitInput.value = nowConfig.maxDownloadPerMinute != null ? nowConfig.maxDownloadPerMinute : 120;
+      return;
+    }
+    nowConfig.maxDownloadPerMinute = v;
+    await window.anti_recall.saveConfig(nowConfig);
+  };
+
+  // ===== 反风控 =====
+
+  // 反风控模式选择
+  var antiRiskSelect = node2.querySelector("#antiRiskModeSelect");
+  antiRiskSelect.value = nowConfig.antiRiskMode || "auto";
+  antiRiskSelect.addEventListener("change", async () => {
+    nowConfig.antiRiskMode = antiRiskSelect.value;
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // 伪装等级选择
+  var stealthSelect = node2.querySelector("#stealthLevelSelect");
+  stealthSelect.value = String(nowConfig.stealthLevel != null ? nowConfig.stealthLevel : 2);
+  stealthSelect.addEventListener("change", async () => {
+    nowConfig.stealthLevel = parseInt(stealthSelect.value);
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // AI 行为学习开关
+  var q_switch_learning = node2.querySelector("#switchBehaviorLearning");
+  if (nowConfig.enableBehaviorLearning !== false) {
+    q_switch_learning.classList.add("is-active");
+  }
+  q_switch_learning.addEventListener("click", async () => {
+    nowConfig.enableBehaviorLearning = !q_switch_learning.classList.contains("is-active");
+    q_switch_learning.classList.toggle("is-active");
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // 威胁响应开关
+  var q_switch_threat = node2.querySelector("#switchThreatResponse");
+  if (nowConfig.enableThreatResponse !== false) {
+    q_switch_threat.classList.add("is-active");
+  }
+  q_switch_threat.addEventListener("click", async () => {
+    nowConfig.enableThreatResponse = !q_switch_threat.classList.contains("is-active");
+    q_switch_threat.classList.toggle("is-active");
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // 反风控状态展示
+  node2.querySelector("#refreshAntiRiskStatus").onclick = async () => {
+    var panel = node2.querySelector("#antiRiskStatusPanel");
+    try {
+      var status = await window.anti_recall.getAntiRiskStatus();
+      panel.style.display = "block";
+      var threatColor = { LOW: "#4caf50", MEDIUM: "#ff9800", HIGH: "#ff5722", CRITICAL: "#d32f2f" };
+      panel.innerHTML =
+        `<b>策略模式:</b> ${status.policy.name}<br>` +
+        `<b>有效速率:</b> ${status.threat.effectiveRate} 次/分钟<br>` +
+        `<b>威胁级别:</b> <span style="color:${threatColor[status.threat.level] || "#888"};font-weight:bold;">${status.threat.level}</span> (${status.threat.signals} 个信号)<br>` +
+        `<b>AI 学习:</b> ${status.learner.samples} 个样本, 平均延迟 ${status.learner.learnedAvg}ms (±${status.learner.learnedStd}ms)`;
+    } catch (e) {
+      panel.style.display = "block";
+      panel.innerHTML = "获取失败: " + e.message;
+    }
+  };
 }
 
 async function patchCss() {
