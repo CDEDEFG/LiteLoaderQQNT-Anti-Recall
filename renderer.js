@@ -134,7 +134,7 @@ export async function onSettingWindowCreated(view) {
                   <span class="secondary-text">将会同时影响阴影和“已撤回”提示的颜色</span>
                 </div>
                 <div>
-                  <input type="color" value="#ff0000" class="q-button q-button--small q-button--secondary pick-color" />
+                  <input type="color" value="${nowConfig.mainColor || '#ff6d6d'}" class="q-button q-button--small q-button--secondary pick-color" />
                 </div>
               </setting-item>
 
@@ -683,7 +683,14 @@ async function patchCss() {
   stylee.type = "text/css";
   stylee.id = "anti-recall-css";
 
-  var sHtml = `   .message-content__wrapper {
+  // 用 CSS 变量管理主题色, 后续改色不用重拼整个 style 块
+  var mainColor = nowConfig.mainColor || "#ff6d6d";
+
+  var sHtml = `   :root {
+                    --anti-recall-color: ${mainColor};
+                  }
+
+                  .message-content__wrapper {
                     color: var(--bubble_guest_text);
                     display: flex;
                     grid-row-start: content;
@@ -693,7 +700,7 @@ async function patchCss() {
                     max-width: -webkit-fill-available;
                     min-height: 38px;
                     overflow: visible !important;
-                    border-radius: 10px; 
+                    border-radius: 10px;
                   }
 
                   .message-content__wrapper.message-content-recalled-parent {
@@ -709,7 +716,7 @@ async function patchCss() {
                     margin-left:3px;
                     margin-right:3px;
                     margin-bottom: 25px;
-                    box-shadow: 0px 0px 8px 5px ${nowConfig.mainColor} !important;`;
+                    box-shadow: 0px 0px 8px 5px var(--anti-recall-color) !important;`;
   } else {
     sHtml += `margin-bottom: 15px;`;
   }
@@ -735,7 +742,7 @@ async function patchCss() {
                 transform: translateX(-30%);
                 opacity: 0;
                 pointer-events: none;
-                color:${nowConfig.mainColor};
+                color: var(--anti-recall-color);
             }
         `;
   stylee.innerHTML = sHtml;
@@ -934,6 +941,12 @@ async function onLoad() {
 
   async function appendRecalledTag(msgElement) {
     if (!msgElement) return;
+
+    // 恢复后的消息可能还带着 gray-tip-message 类, 移除它以恢复主题色
+    msgElement.classList.remove("gray-tip-message");
+    // 也移除父级可能残留的灰条样式
+    var parent = msgElement.closest(".ml-item");
+    if (parent) parent.classList.remove("gray-tip-message");
 
     var currRecalledTip = msgElement.querySelector(".message-content-recalled");
     if (currRecalledTip == null) {
