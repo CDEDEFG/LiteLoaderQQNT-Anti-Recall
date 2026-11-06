@@ -1,6 +1,15 @@
 var recalledMsgList = [];
-
 var nowConfig = {};
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, function (ch) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+  });
+}
+
+function escapeCssColor(value) {
+  return /^#[0-9a-f]{3,8}$/i.test(value) ? value : "#ff6d6d";
+}
 
 export async function onSettingWindowCreated(view) {
   // Duck-typing 检查: 不用 instanceof (跨 realm 的 DOM 对象 instanceof 会误判)
@@ -254,8 +263,8 @@ export async function onSettingWindowCreated(view) {
           msgs.slice(0, 50).forEach((m, i) => {
             var time = m.recallTime ? new Date(m.recallTime * 1000).toLocaleString() : "未知时间";
             html += `<div style="padding:6px 8px; margin:4px 0; background:var(--bg_bottom_standard); border-radius:6px; border-left:3px solid var(--fill_light_primary);">
-              <div style="color:var(--text_secondary); font-size:11px;">#${i+1} · ${m.sender} · ${time}</div>
-              <div style="color:var(--text_primary); margin-top:2px; word-break:break-all;">${m.preview}</div>
+              <div style="color:var(--text_secondary); font-size:11px;">#${i+1} · ${escapeHtml(m.sender)} · ${time}</div>
+              <div style="color:var(--text_primary); margin-top:2px; word-break:break-all;">${escapeHtml(m.preview)}</div>
             </div>`;
           });
           if (msgs.length > 50) html += `<div style="color:var(--text_secondary); text-align:center; padding:8px;">仅显示前 50 条, 共 ${msgs.length} 条</div>`;
@@ -428,7 +437,7 @@ async function patchCss() {
   stylee.id = "anti-recall-css";
 
   // 用 CSS 变量管理主题色, 后续改色不用重拼整个 style 块
-  var mainColor = nowConfig.mainColor || "#ff6d6d";
+  var mainColor = escapeCssColor(nowConfig.mainColor);
 
   var sHtml = `   :root {
                     --anti-recall-color: ${mainColor};
