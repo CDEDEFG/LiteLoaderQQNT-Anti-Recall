@@ -19,6 +19,7 @@ var nextAttemptAt = 0;
 var recoveredCount = 0;
 var dbCache = new Map();
 var mediaIndexCache = new Map();
+var recoveryGeneration = 0;
 
 function setOutput(fn) { outputFn = fn; }
 function setConfigGetter(fn) { configGetter = fn; }
@@ -87,11 +88,25 @@ function keyCandidates(account) {
     execFile('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
       '-File', path.join(__dirname, 'scan-keys-memory.ps1'), '-DbDir', account.dbDir,
-    ], { windowsHide: true, timeout: 180000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) return reject(new Error(stderr || stdout || error.message));
-      const candidates = [...stdout.matchAll(/^([0-9a-f]{64}) ([0-9a-f]{32})$/gim)]
-        .map((m) => ({ key: m[1], salt: m[2] }));
-      resolve(candidates);
+    ], { windowsHide: true, timeout: 180000, encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const outputText = Buffer.from(stdout || []).toString('utf8');
+      const errorText = Buffer.from(stderr || []).toString('utf8');
+      let result = null;
+      try { result = JSON.parse(outputText.trim()); } catch {}
+      if (result && Array.isArray(result.candidates)) {
+        const candidates = result.candidates.filter((line) => /^[0-9a-f]{64} [0-9a-f]{32}$/i.test(line))
+          .map((line) => ({ key: line.slice(0, 64), salt: line.slice(65) }));
+        if (result.ok) return resolve(candidates);
+        const messages = {
+          NO_QQ: 'QQ 未登录，或尚未加载消息数据库；登录并进入聊天窗口后重试',
+          NO_KEY: '未找到匹配的历史库密钥，请保持 QQ 登录后重试',
+          NO_DB: '未找到可读取的 QQ 历史数据库',
+          SCAN_ERROR: '无法读取当前 QQ 的历史库密钥，请检查登录状态及权限',
+        };
+        return reject(new Error(messages[result.code] || '本机历史库连接验证失败'));
+      }
+      output('History key scanner failed:', errorText || error?.message || outputText.slice(0, 300));
+      reject(new Error('历史库连接程序异常，请确认 QQ 已登录后重试'));
     });
   });
 }
@@ -254,6 +269,7 @@ async function recoverMessage(msgId) {
     return recoverMessage(msgId);
   }
   currentRecovery = (async () => {
+    const generation = recoveryGeneration;
     try {
       const accounts = findAccounts();
       const account = chooseAccount(accounts);
@@ -265,7 +281,7 @@ async function recoverMessage(msgId) {
         return null;
       }
       const msg = rowToMessage(row, indexMedia(account));
-      if (!msg) return null;
+      if (!msg || generation !== recoveryGeneration || !enabled()) return null;
       recoveredCount++;
       lastError = '';
       return { id: String(msgId), sender: msg.peerUid, msg };
@@ -281,6 +297,13 @@ async function recoverMessage(msgId) {
     }
   })();
   return currentRecovery;
+}
+
+function reset() {
+  recoveryGeneration++;
+  nextAttemptAt = 0;
+  currentRecovery = null;
+  closePlaintextDatabases();
 }
 
 function status() {
@@ -304,16 +327,24 @@ async function testConnection() {
     const account = chooseAccount(accounts);
     if (!account) throw new Error(accounts.length ? '检测到多个 QQ 账号，请先填写 QQ 号' : '未找到本机 QQ 历史数据库');
     const entry = await openPlaintextDatabase(account);
-    // 仅检查消息表能否访问，不读取消息正文
-    entry.db.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name IN (?, ?)').all('table', 'group_msg_table', 'c2c_msg_table');
+    // 只检查消息表和计数，不读取消息正文；损坏的解密快照不能报成功
+    const tables = entry.db.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name IN (?, ?)').all('table', 'group_msg_table', 'c2c_msg_table');
+    if (!tables.length) throw new Error('历史库未找到消息表，请等待 QQ 完成登录同步后重试');
+    for (const table of tables) {
+      if (table.name === 'group_msg_table' || table.name === 'c2c_msg_table') {
+        entry.db.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get();
+      }
+    }
     closePlaintextDatabases();
     lastError = '';
     return { ok: true, account: account.qq, message: '本机历史库连接验证通过，未读取消息正文' };
   } catch (error) {
-    lastError = error.message;
+    lastError = /malformed|not a database/i.test(error.message)
+      ? '历史库快照校验失败，QQ 正在更新数据库；请稍后重新测试'
+      : error.message;
     closePlaintextDatabases();
     return { ok: false, error: error.message };
   }
 }
 
-module.exports = { setOutput, setConfigGetter, recoverMessage, testConnection, status, closePlaintextDatabases, findAccounts, buildElements, queryMessage, rowToMessage };
+module.exports = { setOutput, setConfigGetter, recoverMessage, testConnection, reset, status, closePlaintextDatabases, findAccounts, buildElements, queryMessage, rowToMessage };

@@ -72,7 +72,7 @@ async function onLoad() {
 
   ipcMain.handle("LiteLoader.anti_recall.saveConfig", async (e, newConfig) => {
     config.save(newConfig);
-    historyRecovery.closePlaintextDatabases();
+    historyRecovery.reset();
     imgDownloader.setEnabled(!config.get().disableImgDownload);
     if (config.get().saveDb && database.getDb() == null) {
       database.open(pluginDataDir, () => {

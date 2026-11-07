@@ -38,6 +38,16 @@ export async function onSettingWindowCreated(view) {
 
   const new_navbar_item = `
     <div class="anti-recall-wrapper">
+      <style>
+        .anti-recall-wrapper setting-item { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:12px 16px; box-sizing:border-box; }
+        .anti-recall-wrapper .setting-label { flex:1 1 210px; min-width:180px; }
+        .anti-recall-wrapper .setting-label setting-text { display:block; white-space:normal; line-height:1.6; }
+        .anti-recall-wrapper .setting-label setting-text[data-type="secondary"] { margin-top:5px; font-size:12px; opacity:.78; }
+        .anti-recall-wrapper setting-item > setting-switch, .anti-recall-wrapper setting-item > input, .anti-recall-wrapper setting-item > select { flex:0 0 auto; max-width:100%; }
+        .anti-recall-wrapper .history-actions { display:flex; gap:10px; flex:0 0 auto; }
+        .anti-recall-wrapper #historyStatusPanel, .anti-recall-wrapper #antiRiskStatusPanel { flex:0 0 100%; box-sizing:border-box; overflow-wrap:anywhere; }
+        @media (max-width:760px) { .anti-recall-wrapper setting-item { align-items:flex-start; } .anti-recall-wrapper .history-actions { width:100%; } }
+      </style>
       <setting-item class="config_view">
 
         <setting-section data-title="操作">
@@ -197,20 +207,29 @@ export async function onSettingWindowCreated(view) {
           <setting-panel>
             <setting-list data-direction="column">
               <setting-item>
-                <setting-text>启用本机历史消息恢复</setting-text>
-                <setting-text data-type="secondary">仅 Windows；QQ 保持登录时，从本机历史库按 msgId 恢复曾同步到本机的原文。密钥仅内存使用，不上传。默认关闭；完全隐身/偏执模式下不会扫描进程。</setting-text>
+                <div class="setting-label">
+                  <setting-text>启用本机历史消息恢复</setting-text>
+                  <setting-text data-type="secondary">仅 Windows，默认关闭。QQ 登录时按 msgId 从本机历史库恢复曾同步的原文；密钥仅内存使用，不上传。隐身/偏执模式不扫描进程。</setting-text>
+                </div>
                 <setting-switch id="switchHistoryRecovery"></setting-switch>
               </setting-item>
               <setting-item>
-                <setting-text>指定要恢复的 QQ 号</setting-text>
-                <setting-text data-type="secondary">多个账号时必须填写；单账号可留空。不能恢复本机从未收到过的离线原文。</setting-text>
+                <div class="setting-label">
+                  <setting-text>指定要恢复的 QQ 号</setting-text>
+                  <setting-text data-type="secondary">多账号必须填写；单账号可留空。本机从未收到过的离线原文无法恢复。</setting-text>
+                </div>
                 <input id="historyQqNumber" class="text_color path-input" type="text" inputmode="numeric" style="width:150px;" placeholder="QQ 号（可选）"/>
               </setting-item>
               <setting-item>
-                <setting-text>历史恢复状态</setting-text>
-                <setting-button data-type="secondary" id="refreshHistoryStatus">刷新状态</setting-button>
-                <setting-button data-type="secondary" id="testHistoryConnection">仅测试连接</setting-button>
-                <div id="historyStatusPanel" style="width:100%; margin-top:8px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
+                <div class="setting-label">
+                  <setting-text>历史恢复状态</setting-text>
+                  <setting-text data-type="secondary">「仅测试连接」不读取消息正文，验证最长需要 3 分钟。</setting-text>
+                </div>
+                <div class="history-actions">
+                  <setting-button data-type="secondary" id="refreshHistoryStatus">刷新状态</setting-button>
+                  <setting-button data-type="secondary" id="testHistoryConnection">仅测试连接</setting-button>
+                </div>
+                <div id="historyStatusPanel" style="width:100%; margin-top:4px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
               </setting-item>
             </setting-list>
           </setting-panel>
@@ -461,6 +480,9 @@ export async function onSettingWindowCreated(view) {
   });
 
   node2.querySelector("#testHistoryConnection").addEventListener("click", async () => {
+    var button = node2.querySelector("#testHistoryConnection");
+    if (button.disabled) return;
+    button.disabled = true;
     var panel = node2.querySelector("#historyStatusPanel");
     panel.style.display = "block";
     panel.innerHTML = "正在验证本机历史库连接，请保持 QQ 登录；不会读取消息正文...";
@@ -471,6 +493,8 @@ export async function onSettingWindowCreated(view) {
         : `<b style="color:#ff6d6d">验证失败</b><br>${escapeHtml(result.error)}`;
     } catch (e) {
       panel.innerHTML = "验证失败: " + escapeHtml(e.message);
+    } finally {
+      button.disabled = false;
     }
   });
 
