@@ -67,8 +67,8 @@ class ImgDownloader {
     );
   }
 
-  // 劫持图片 URL: 把被撤回图片的本地路径替换为 CDN 直链
-  // QQ 渲染层会自己从 CDN 拉取, 插件不直接发请求
+  // 将被撤回图片/视频的地址字段恢复为 CDN 直链
+  // 不注册协议拦截；QQ 会尝试使用这些地址加载资源
   hijackMediaUrls(msgItem) {
     if (!msgItem || !msgItem.msgId || !msgItem.elements) return;
     var hijacked = { pics: [], videos: [] };
@@ -77,12 +77,12 @@ class ImgDownloader {
         var pic = el.picElement;
         var cdnUrl = this.buildPicCdnUrl(pic);
         if (cdnUrl) {
-          // 保存劫持映射, QQ 请求这个 URL 时由 protocol handler 拦截
+          // 保存地址映射供排查；不注册协议处理器
           hijacked.pics.push({
             originalPath: pic.sourcePath,
             cdnUrl: cdnUrl,
           });
-          // 直接把 originImageUrl 改成完整 CDN 地址
+          // 将相对地址恢复为完整 CDN 地址；已有完整地址保持不变
           if (!pic.originImageUrl || !pic.originImageUrl.startsWith("http")) {
             pic.originImageUrl = cdnUrl;
           }
@@ -375,7 +375,7 @@ class ImgDownloader {
       return;
     }
 
-    // URL 劫持: 由配置控制 (paranoid 模式下这也是唯一恢复方式)
+    // CDN 地址恢复: 由配置控制 (paranoid 模式下仅尝试此恢复方式)
     if (stealth.shouldHijackUrls()) {
       this.hijackMediaUrls(msgItem);
     }

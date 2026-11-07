@@ -128,8 +128,8 @@ export async function onSettingWindowCreated(view) {
           <setting-panel>
             <setting-list data-direction="column">
               <setting-item>
-                <setting-text>图片/视频 URL 劫持</setting-text>
-                <setting-text data-type="secondary">被撤回资源换 CDN 直链让 QQ 自己拉，插件不发请求</setting-text>
+                <setting-text>图片/视频 CDN 地址恢复</setting-text>
+                <setting-text data-type="secondary">将被撤回图片/视频的地址字段替换为 CDN 直链，由 QQ 尝试加载；不拦截网络协议，无法恢复服务器已删除的资源。</setting-text>
                 <setting-switch id="switchUrlHijack"></setting-switch>
               </setting-item>
               <setting-item>
@@ -160,7 +160,7 @@ export async function onSettingWindowCreated(view) {
                 <select id="antiRiskModeSelect" class="path-input text_color" style="padding:4px 8px; border-radius:4px;">
                   <option value="auto">自动 — 标准防护，时间自适应</option>
                   <option value="strict">严格 — 低速率+强化延迟</option>
-                  <option value="paranoid">偏执 — 插件零直接请求，仅URL劫持</option>
+                  <option value="paranoid">偏执 — 插件零直接下载，仅地址恢复</option>
                   <option value="off">关闭 — 裸请求，仅调试</option>
                 </select>
               </setting-item>
