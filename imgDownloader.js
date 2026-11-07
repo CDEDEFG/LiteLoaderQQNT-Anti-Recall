@@ -203,28 +203,31 @@ class ImgDownloader {
   // ---------- 下载核心 (集成反风控) ----------
 
   async request(url) {
-    // 所有资源备份下载统一经过策略限速、行为延迟与伪装请求
-    const stealth = require("./src/stealthNet.js");
-    return stealth.stealthDownload(url, { timeout: 15000 });
+    // 兼容单 URL 的调用方；候选地址由 requestWithFallback 统一限速
+    return this.requestWithFallback([url]);
   }
 
-  // 下载失败时尝试其它域名
-  async requestWithFallback(urls) {
-    let lastErr = null;
-    for (const u of urls) {
-      if (!u) continue;
-      try {
-        const body = await this.request(u);
-        try {
-          JSON.parse(body); // JSON 响应 = 过期提示
-        } catch (e) {
-          return body; // 二进制内容
-        }
-      } catch (e) {
-        lastErr = e;
-      }
+  isJsonErrorResponse(body) {
+    if (!body || body.length === 0) return true;
+    const text = body.toString("utf8", 0, Math.min(body.length, 1024)).trim();
+    if (!(text.startsWith("{") || text.startsWith("["))) return false;
+    try {
+      JSON.parse(text);
+      return true;
+    } catch {
+      return false;
     }
-    throw lastErr;
+  }
+
+  async requestWithFallback(urls) {
+    const body = await this.requestWithPolicy(urls);
+    if (this.isJsonErrorResponse(body)) throw new Error("Media expired or error response");
+    return body;
+  }
+
+  async requestWithPolicy(urls) {
+    const stealth = require("./src/stealthNet.js");
+    return stealth.stealthDownloadWithFallback(urls, { timeout: 15000 });
   }
 
   async ensureLocal(localPath, urls, label) {

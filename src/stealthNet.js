@@ -267,7 +267,7 @@ var threat = {
 
   report(type, detail) {
     if (!cfg().enableThreatResponse) return;
-    this.signals.push({ type: type, time: Date.now() });
+    this.signals.push({ type: type, time: Date.now(), detail: detail || "" });
     // 只保留 5 分钟内的信号
     var cutoff = Date.now() - 300000;
     this.signals = this.signals.filter(function (s) { return s.time > cutoff; });
@@ -299,6 +299,8 @@ var threat = {
 
   // 威胁级别对实际速率的修正
   rateOverride() {
+    // 关闭威胁响应时必须立即恢复策略速率，不能沿用历史异常级别
+    if (!cfg().enableThreatResponse) return null;
     switch (this.level) {
       case "CRITICAL": return 0;
       case "HIGH": return 5;
@@ -368,7 +370,7 @@ function getCookie(domain) {
 function isTrustedUrl(url) {
   try {
     var u = new URL(url);
-    return u.hostname.endsWith(".qq.com") || u.hostname.endsWith(".qpic.cn");
+    return u.hostname.endsWith(".qq.com") || u.hostname.endsWith(".qpic.cn") || u.hostname.endsWith(".qq.com.cn");
   } catch { return false; }
 }
 
@@ -417,6 +419,11 @@ function stealthRequest(url, options) {
       if (res.statusCode === 403) threat.report("http_403", url);
       if (res.statusCode === 429) threat.report("http_429", url);
 
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        res.resume();
+        return reject(new Error("HTTP " + res.statusCode));
+      }
+
       var chunks = [];
       res.on("data", function (c) { chunks.push(c); });
       res.on("end", function () { resolve(Buffer.concat(chunks)); });
@@ -424,7 +431,7 @@ function stealthRequest(url, options) {
     });
 
     req.on("error", function (e) {
-      if (e.message === "timeout") threat.report("timeout", url);
+      if (e.message === "timeout" || e.code === "ETIMEDOUT") threat.report("timeout", url);
       reject(e);
     });
     req.on("timeout", function () { req.destroy(new Error("timeout")); });
@@ -498,6 +505,40 @@ async function stealthDownload(url, options) {
   return body;
 }
 
+// 同一资源的候选 URL 只消耗一次速率配额和一次行为延迟，避免备用地址放大流量
+async function stealthDownloadWithFallback(urls, options) {
+  var list = Array.isArray(urls) ? urls.filter(Boolean) : [urls].filter(Boolean);
+  if (list.length === 0) throw new Error("No candidate URL");
+  var policy = resolvePolicy();
+  if (!policy.directDownload) {
+    var err = new Error("Direct download disabled by policy: " + policy.name);
+    err.code = "POLICY_DISABLED";
+    throw err;
+  }
+  if (!canDownload()) {
+    var limited = new Error("Rate limited (policy=" + policy.name + ", threat=" + threat.level + ")");
+    limited.code = "RATE_LIMITED";
+    throw limited;
+  }
+  await preDownloadDelay();
+  var lastError = null;
+  try {
+    for (var url of list) {
+      try {
+        var body = await stealthRequest(url, options);
+        recordDownload();
+        return body;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+  } finally {
+    // 网络错误也计入实际尝试，防止故障时无限快速重试
+    recordDownload();
+  }
+  throw lastError;
+}
+
 async function silentDownload(url, options) {
   try { return await stealthDownload(url, options); } catch { return null; }
 }
@@ -541,6 +582,7 @@ module.exports = {
   // 核心
   stealthRequest,
   stealthDownload,
+  stealthDownloadWithFallback,
   silentDownload,
   // 策略
   resolvePolicy,
