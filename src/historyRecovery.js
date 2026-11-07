@@ -91,6 +91,9 @@ function keyCandidates(account) {
     ], { windowsHide: true, timeout: 180000, encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       const outputText = Buffer.from(stdout || []).toString('utf8');
       const errorText = Buffer.from(stderr || []).toString('utf8');
+      if (error && (error.killed || error.signal === 'SIGTERM')) {
+        return reject(new Error('历史库验证超时，请稍后重试或重启 QQ'));
+      }
       let result = null;
       try { result = JSON.parse(outputText.trim()); } catch {}
       if (result && Array.isArray(result.candidates)) {
@@ -134,12 +137,17 @@ function openPlaintextDatabase(account) {
   }
   return decryptMessages(account).then((result) => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-recall-history-'));
-    const tempFile = path.join(tempDir, 'nt_msg.db');
-    fs.writeFileSync(tempFile, result.buffer, { flag: 'wx' });
-    const db = new DatabaseSync(tempFile, { readOnly: true });
-    const entry = { db, tempDir, tempFile, createdAt: Date.now() };
-    dbCache.set(account.qq, entry);
-    return entry;
+    try {
+      const tempFile = path.join(tempDir, 'nt_msg.db');
+      fs.writeFileSync(tempFile, result.buffer, { flag: 'wx' });
+      const db = new DatabaseSync(tempFile, { readOnly: true });
+      const entry = { db, tempDir, tempFile, createdAt: Date.now() };
+      dbCache.set(account.qq, entry);
+      return entry;
+    } catch (error) {
+      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+      throw error;
+    }
   });
 }
 

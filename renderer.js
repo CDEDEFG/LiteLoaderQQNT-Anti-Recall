@@ -39,14 +39,14 @@ export async function onSettingWindowCreated(view) {
   const new_navbar_item = `
     <div class="anti-recall-wrapper">
       <style>
-        .anti-recall-wrapper setting-item { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:12px 16px; box-sizing:border-box; }
-        .anti-recall-wrapper .setting-label { flex:1 1 210px; min-width:180px; }
+        .anti-recall-wrapper setting-item[data-direction="row"] { flex-wrap:wrap; gap:10px 16px; padding:12px 0; }
+        .anti-recall-wrapper .setting-label { flex:1 1 220px; min-width:180px; overflow:hidden; }
         .anti-recall-wrapper .setting-label setting-text { display:block; white-space:normal; line-height:1.6; }
         .anti-recall-wrapper .setting-label setting-text[data-type="secondary"] { margin-top:5px; font-size:12px; opacity:.78; }
         .anti-recall-wrapper setting-item > setting-switch, .anti-recall-wrapper setting-item > input, .anti-recall-wrapper setting-item > select { flex:0 0 auto; max-width:100%; }
         .anti-recall-wrapper .history-actions { display:flex; gap:10px; flex:0 0 auto; }
         .anti-recall-wrapper #historyStatusPanel, .anti-recall-wrapper #antiRiskStatusPanel { flex:0 0 100%; box-sizing:border-box; overflow-wrap:anywhere; }
-        @media (max-width:760px) { .anti-recall-wrapper setting-item { align-items:flex-start; } .anti-recall-wrapper .history-actions { width:100%; } }
+        @media (max-width:760px) { .anti-recall-wrapper .setting-label { min-width:130px; } .anti-recall-wrapper .history-actions { flex-wrap:wrap; } }
       </style>
       <setting-item class="config_view">
 
@@ -245,10 +245,19 @@ export async function onSettingWindowCreated(view) {
   for (const item of view.querySelectorAll(".anti-recall-wrapper setting-item")) {
     const directTexts = Array.from(item.children).filter((child) => child.tagName === "SETTING-TEXT");
     if (directTexts.length < 2) continue;
+    item.setAttribute("data-direction", "row");
     const label = document.createElement("div");
     label.className = "setting-label";
     item.insertBefore(label, directTexts[0]);
-    for (const text of directTexts) label.appendChild(text);
+    for (const text of directTexts) {
+      text.style.display = "block";
+      text.style.webkitLineClamp = "unset";
+      text.style.webkitBoxOrient = "initial";
+      text.style.textOverflow = "clip";
+      text.style.overflow = "visible";
+      text.style.whiteSpace = "normal";
+      label.appendChild(text);
+    }
   }
   const node2 = view.querySelector(".anti-recall-wrapper");
   // setting-switch helper: is-active attribute controls on/off
