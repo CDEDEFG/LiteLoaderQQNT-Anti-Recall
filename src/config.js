@@ -44,6 +44,17 @@ function init(pluginDataDir) {
   nowConfig = load();
 }
 
+function sanitize(config) {
+  const result = Object.assign({}, DEFAULT_CONFIG, config && typeof config === "object" ? config : {});
+  if (!["auto", "strict", "paranoid", "off"].includes(result.antiRiskMode)) result.antiRiskMode = "auto";
+  result.stealthLevel = Math.max(0, Math.min(3, Number(result.stealthLevel) || 0));
+  result.maxDownloadPerMinute = Math.max(1, Math.min(999, Math.round(Number(result.maxDownloadPerMinute) || DEFAULT_CONFIG.maxDownloadPerMinute)));
+  result.maxMsgSaveLimit = Math.max(1, Math.round(Number(result.maxMsgSaveLimit) || DEFAULT_CONFIG.maxMsgSaveLimit));
+  result.deleteMsgCountPerTime = Math.max(1, Math.round(Number(result.deleteMsgCountPerTime) || DEFAULT_CONFIG.deleteMsgCountPerTime));
+  if (!/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(result.mainColor)) result.mainColor = DEFAULT_CONFIG.mainColor;
+  return result;
+}
+
 function load() {
   if (!fs.existsSync(configFilePath)) {
     save(DEFAULT_CONFIG);
@@ -51,17 +62,18 @@ function load() {
   }
   try {
     var loaded = JSON.parse(fs.readFileSync(configFilePath, "utf-8"));
-    return Object.assign({}, DEFAULT_CONFIG, loaded);
+    return sanitize(loaded);
   } catch (e) {
     return Object.assign({}, DEFAULT_CONFIG);
   }
 }
 
 function save(config) {
-  nowConfig = Object.assign({}, DEFAULT_CONFIG, config);
+  nowConfig = sanitize(config);
   try {
     fs.writeFileSync(configFilePath, JSON.stringify(nowConfig, null, 2), "utf-8");
   } catch (e) {}
+  return nowConfig;
 }
 
 function get() {

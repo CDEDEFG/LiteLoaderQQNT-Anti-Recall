@@ -368,7 +368,7 @@ function getCookie(domain) {
 function isTrustedUrl(url) {
   try {
     var u = new URL(url);
-    return u.hostname.endsWith(".qq.com") || u.hostname.endsWith(".qpic.cn") || u.hostname === "im.qq.com";
+    return u.hostname.endsWith(".qq.com") || u.hostname.endsWith(".qpic.cn");
   } catch { return false; }
 }
 

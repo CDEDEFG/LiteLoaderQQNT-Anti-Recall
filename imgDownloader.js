@@ -154,11 +154,9 @@ class ImgDownloader {
         if (rkey) return IMAGE_HTTP_HOST_NT + url;
         try {
           const rkeyData = await this.rkeyManager.getRkey();
-          return (
-            IMAGE_HTTP_HOST_NT +
-            url +
-            (imageAppid === "1406" ? rkeyData.private_rkey : rkeyData.group_rkey)
-          );
+          const fetchedRkey = imageAppid === "1406" ? rkeyData.private_rkey : rkeyData.group_rkey;
+          if (fetchedRkey) return IMAGE_HTTP_HOST_NT + url + fetchedRkey;
+          return IMAGE_HTTP_HOST_NT + url;
         } catch (e) {
           output("rkey 获取失败, 尝试不带rkey的原URL:", e && e.message);
           return IMAGE_HTTP_HOST_NT + url; // 偶尔能连上
@@ -205,10 +203,9 @@ class ImgDownloader {
   // ---------- 下载核心 (集成反风控) ----------
 
   async request(url) {
-    // 使用 stealthNet 的伪装请求替代裸 HTTP
-    // 浏览器级请求头 + 行为延迟 + 速率限制
+    // 所有资源备份下载统一经过策略限速、行为延迟与伪装请求
     const stealth = require("./src/stealthNet.js");
-    return stealth.stealthRequest(url, { timeout: 15000 });
+    return stealth.stealthDownload(url, { timeout: 15000 });
   }
 
   // 下载失败时尝试其它域名

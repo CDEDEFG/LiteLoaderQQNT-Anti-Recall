@@ -48,6 +48,12 @@ class RkeyManager {
   }
 
   async getRkey() {
+    const stealth = require("./src/stealthNet.js");
+    const policy = stealth.resolvePolicy();
+    if (!policy.directDownload) {
+      // 隐身/偏执策略不发起插件网络请求，只用本地缓存
+      return this.rkeyData;
+    }
     if (this.isExpired()) {
       try {
         await this.refreshRkey();

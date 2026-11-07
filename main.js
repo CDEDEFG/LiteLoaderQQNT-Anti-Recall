@@ -76,8 +76,8 @@ async function onLoad() {
       });
     }
     ipcScanner.notifyRenderer("LiteLoader.anti_recall.mainWindow.repatchCss");
+    return config.get();
   });
-
   // IPC: 渲染层主动拉取已撤回消息 id 列表
   ipcMain.handle("LiteLoader.anti_recall.getRecallList", async () =>
     msgCache.getRecalledIds(null)
