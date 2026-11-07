@@ -34,6 +34,10 @@ const DEFAULT_CONFIG = {
   enableBehaviorLearning: true,   // AI 行为学习引擎
   enableThreatResponse: true,     // 威胁情报自动响应
   threatResponseLevel: "auto",    // 威胁响应阈值: auto / sensitive / aggressive
+
+  // ===== 本地历史恢复 (默认关闭，不自动读取 QQ 历史数据库) =====
+  enableHistoryRecovery: false,    // 登录时从本机 nt_msg.db 按 msgId 恢复曾同步的原文
+  historyQqNumber: "",             // 多账号时指定 QQ 号；单账号可留空
 };
 
 var configFilePath = "";
@@ -47,11 +51,13 @@ function init(pluginDataDir) {
 function sanitize(config) {
   const result = Object.assign({}, DEFAULT_CONFIG, config && typeof config === "object" ? config : {});
   if (!["auto", "strict", "paranoid", "off"].includes(result.antiRiskMode)) result.antiRiskMode = "auto";
-  result.stealthLevel = Math.max(0, Math.min(3, Number(result.stealthLevel) || 0));
+  result.stealthLevel = Math.max(0, Math.min(3, Math.round(Number(result.stealthLevel) || 0)));
   result.maxDownloadPerMinute = Math.max(1, Math.min(999, Math.round(Number(result.maxDownloadPerMinute) || DEFAULT_CONFIG.maxDownloadPerMinute)));
   result.maxMsgSaveLimit = Math.max(1, Math.round(Number(result.maxMsgSaveLimit) || DEFAULT_CONFIG.maxMsgSaveLimit));
   result.deleteMsgCountPerTime = Math.max(1, Math.round(Number(result.deleteMsgCountPerTime) || DEFAULT_CONFIG.deleteMsgCountPerTime));
   if (!/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(result.mainColor)) result.mainColor = DEFAULT_CONFIG.mainColor;
+  result.enableHistoryRecovery = result.enableHistoryRecovery === true;
+  result.historyQqNumber = typeof result.historyQqNumber === "string" ? result.historyQqNumber.replace(/\D/g, "").slice(0, 16) : "";
   return result;
 }
 

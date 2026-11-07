@@ -29,5 +29,7 @@ contextBridge.exposeInMainWorld("anti_recall", {
     openArchiveDir: () =>
         ipcRenderer.invoke("LiteLoader.anti_recall.openArchiveDir"),
     getRecalledMsgs: () =>
-        ipcRenderer.invoke("LiteLoader.anti_recall.getRecalledMsgs")
+        ipcRenderer.invoke("LiteLoader.anti_recall.getRecalledMsgs"),
+    getHistoryStatus: () =>
+        ipcRenderer.invoke("LiteLoader.anti_recall.getHistoryStatus")
 });

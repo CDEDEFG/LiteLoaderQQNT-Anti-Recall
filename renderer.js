@@ -193,6 +193,28 @@ export async function onSettingWindowCreated(view) {
           </setting-panel>
         </setting-section>
 
+        <setting-section data-title="本地历史恢复">
+          <setting-panel>
+            <setting-list data-direction="column">
+              <setting-item>
+                <setting-text>启用本机历史消息恢复</setting-text>
+                <setting-text data-type="secondary">仅 Windows；QQ 保持登录时，从本机历史库按 msgId 恢复曾同步到本机的原文。密钥仅内存使用，不上传。默认关闭。</setting-text>
+                <setting-switch id="switchHistoryRecovery"></setting-switch>
+              </setting-item>
+              <setting-item>
+                <setting-text>指定要恢复的 QQ 号</setting-text>
+                <setting-text data-type="secondary">多个账号时必须填写；单账号可留空。不能恢复本机从未收到过的离线原文。</setting-text>
+                <input id="historyQqNumber" class="text_color path-input" type="text" inputmode="numeric" style="width:150px;" placeholder="QQ 号（可选）"/>
+              </setting-item>
+              <setting-item>
+                <setting-text>历史恢复状态</setting-text>
+                <setting-button data-type="secondary" id="refreshHistoryStatus">刷新状态</setting-button>
+                <div id="historyStatusPanel" style="width:100%; margin-top:8px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
+              </setting-item>
+            </setting-list>
+          </setting-panel>
+        </setting-section>
+
       </div>
     </div>
   `;
@@ -402,6 +424,39 @@ export async function onSettingWindowCreated(view) {
   q_switch_threat.addEventListener("click", async () => {
     nowConfig.enableThreatResponse = toggleSwitch(q_switch_threat);
     await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  // 本地历史恢复
+  var q_switch_history = node2.querySelector("#switchHistoryRecovery");
+  setSwitch(q_switch_history, nowConfig.enableHistoryRecovery == true);
+  q_switch_history.addEventListener("click", async () => {
+    nowConfig.enableHistoryRecovery = toggleSwitch(q_switch_history);
+    await window.anti_recall.saveConfig(nowConfig);
+  });
+
+  var historyQqInput = node2.querySelector("#historyQqNumber");
+  historyQqInput.value = nowConfig.historyQqNumber || "";
+  historyQqInput.onblur = async () => {
+    nowConfig.historyQqNumber = historyQqInput.value.trim().replace(/[^0-9]/g, "");
+    historyQqInput.value = nowConfig.historyQqNumber;
+    await window.anti_recall.saveConfig(nowConfig);
+  };
+
+  node2.querySelector("#refreshHistoryStatus").addEventListener("click", async () => {
+    var panel = node2.querySelector("#historyStatusPanel");
+    panel.style.display = "block";
+    try {
+      var status = await window.anti_recall.getHistoryStatus();
+      panel.innerHTML =
+        `<b>启用状态:</b> ${status.enabled ? "已启用" : "未启用"}<br>` +
+        `<b>本机账号:</b> ${status.accounts.length ? status.accounts.map(escapeHtml).join("、") : "未发现"}<br>` +
+        `<b>当前选择:</b> ${status.selectedAccount ? escapeHtml(status.selectedAccount) : "未指定（多账号需填写 QQ 号）"}<br>` +
+        `<b>已恢复:</b> ${status.recoveredCount} 条<br>` +
+        (status.lastError ? `<b>最近错误:</b> ${escapeHtml(status.lastError)}<br>` : "") +
+        `<b>说明:</b> ${escapeHtml(status.note)}`;
+    } catch (e) {
+      panel.innerHTML = "获取失败: " + escapeHtml(e.message);
+    }
   });
 
   // 反风控状态展示

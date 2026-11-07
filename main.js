@@ -18,6 +18,7 @@ const recallHandler = require("./src/recallHandler.js");
 const downloadQueue = require("./src/downloadQueue.js");
 const ipcScanner = require("./src/ipcScanner.js");
 const stealthNet = require("./src/stealthNet.js");
+const historyRecovery = require("./src/historyRecovery.js");
 
 const { ImgDownloader } = require("./imgDownloader.js");
 const { NtSnapshotManager } = require("./ntSnapshotManager.js");
@@ -41,6 +42,8 @@ msgCache.setConfigGetter(config.get);
 recallHandler.setConfigGetter(config.get);
 downloadQueue.setDownloader(imgDownloader);
 stealthNet.setConfigGetter(config.get); // 反风控引擎接管配置
+historyRecovery.setConfigGetter(config.get);
+historyRecovery.setOutput(output);
 recallHandler.setNotifyRenderer(ipcScanner.notifyRenderer);
 ipcScanner.setNotifyRenderer(ipcScanner.notifyRenderer);
 ipcScanner.setSnapshotHook((a) => {
@@ -69,6 +72,7 @@ async function onLoad() {
 
   ipcMain.handle("LiteLoader.anti_recall.saveConfig", async (e, newConfig) => {
     config.save(newConfig);
+    historyRecovery.closePlaintextDatabases();
     imgDownloader.setEnabled(!config.get().disableImgDownload);
     if (config.get().saveDb && database.getDb() == null) {
       database.open(pluginDataDir, () => {
@@ -130,6 +134,9 @@ async function onLoad() {
       }
     }
   });
+
+  // IPC: 本地历史恢复状态
+  ipcMain.handle("LiteLoader.anti_recall.getHistoryStatus", async () => historyRecovery.status());
 
   // IPC: 反风控状态 (设置页展示用)
   ipcMain.handle("LiteLoader.anti_recall.getAntiRiskStatus", async () => {
@@ -237,6 +244,7 @@ async function onLoad() {
 
   app.on("quit", async () => {
     output("Closing db...");
+    historyRecovery.closePlaintextDatabases();
     await database.close();
   });
 }

@@ -1,6 +1,7 @@
 // 消息缓存: msgFlow (短期) + recalledMsg (撤回专用)
 // 优化: Map 索引 O(1) 查找 + 数量上限 + id 统一为 string
 const database = require("./database.js");
+const historyRecovery = require("./historyRecovery.js");
 
 // 统一 id 为 string, 避免 number/string 混用导致的查找失败
 // 空字符串也返回 null (truthy false, 后续判断更安全)
@@ -20,8 +21,9 @@ var outputFn = console.log;
 var configGetter = null;
 
 function setOutput(fn) { outputFn = fn; }
-function setConfigGetter(fn) { configGetter = fn; }
+function setConfigGetter(fn) { configGetter = fn; historyRecovery.setConfigGetter(fn); }
 function output(...args) { outputFn(...args); }
+historyRecovery.setOutput(function (...args) { outputFn(...args); });
 
 function cfg() {
   return configGetter ? configGetter() : {};
@@ -102,6 +104,14 @@ async function findOriginalMsg(msgId) {
     }
     return dbMsg;
   }
+  // 本机 QQ 历史库只按精确 msgId 恢复曾经同步到本机的消息
+  var historyMsg = await historyRecovery.recoverMessage(id);
+  if (historyMsg != null) {
+    recalledMsg.push(historyMsg);
+    recalledIndex.add(id);
+    if (cfg().saveDb) database.put(id, historyMsg);
+    return historyMsg;
+  }
   return null;
 }
 
@@ -138,6 +148,14 @@ async function handleRecallEvent(msgId) {
       recalledIndex.add(id);
     }
     return dbMsg;
+  }
+  // 本机 QQ 历史库只按精确 msgId 恢复曾经同步到本机的消息
+  var historyMsg = await historyRecovery.recoverMessage(id);
+  if (historyMsg != null) {
+    recalledMsg.push(historyMsg);
+    recalledIndex.add(id);
+    if (cfg().saveDb) database.put(id, historyMsg);
+    return historyMsg;
   }
   return null;
 }
@@ -229,6 +247,8 @@ module.exports = {
   getRecalledMsgList,
   getRecalledIds,
   preloadFromDb,
+  getHistoryStatus: function () { return historyRecovery.status(); },
+  closeHistoryRecovery: function () { historyRecovery.closePlaintextDatabases(); },
   addPendingRecall,
   checkPendingRecall,
   removePendingRecall,
