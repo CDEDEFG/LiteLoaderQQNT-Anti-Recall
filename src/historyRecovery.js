@@ -138,10 +138,17 @@ function openPlaintextDatabase(account) {
   }
   return decryptMessages(account).then((result) => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anti-recall-history-'));
+    let db = null;
     try {
       const tempFile = path.join(tempDir, 'nt_msg.db');
       fs.writeFileSync(tempFile, result.buffer, { flag: 'wx' });
-      const db = new DatabaseSync(tempFile, { readOnly: true });
+      db = new DatabaseSync(tempFile, { readOnly: true });
+      // 解密快照可能来自 QQ 写入中的 WAL 切换期，先自检完整性再投入使用
+      const check = db.prepare('PRAGMA quick_check').all();
+      const ok = check.length > 0 && String(check[0].quick_check || '').toLowerCase() === 'ok';
+      if (!ok) {
+        throw new Error('历史库快照校验未通过，QQ 可能正在更新数据库；请稍后重试');
+      }
       const entry = { db, tempDir, tempFile, createdAt: Date.now() };
       dbCache.set(account.qq, entry);
       // 明文快照只作短时查询缓存，60 秒到期自动删除，无需等待退出
@@ -152,6 +159,7 @@ function openPlaintextDatabase(account) {
       cleanupTimer.unref?.();
       return entry;
     } catch (error) {
+      try { db?.close(); } catch {}
       try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
       throw error;
     }
