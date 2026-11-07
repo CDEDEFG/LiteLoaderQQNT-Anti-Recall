@@ -358,9 +358,11 @@ class ImgDownloader {
 
     if (!msgItem || !msgItem.elements || !Array.isArray(msgItem.elements)) {
       if (msgItem?.multiForwardMsgElement) {
-        // TIER 3: 合并转发, 强制递归
-        output("TIER 3 multiForward: force recursive download");
-        await this.downloadMultiForwardElement(msgItem.multiForwardMsgElement, msgItem);
+        const stealth = require("./src/stealthNet.js");
+        if (stealth.shouldProcessMultiForward()) {
+          output("TIER 3 multiForward: force recursive download");
+          await this.downloadMultiForwardElement(msgItem.multiForwardMsgElement, msgItem);
+        }
       }
       return;
     }

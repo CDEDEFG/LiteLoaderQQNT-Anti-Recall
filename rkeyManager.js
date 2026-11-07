@@ -105,7 +105,7 @@ class RkeyManager {
     // 使用 stealthNet 的伪装请求
     const stealth = require("./src/stealthNet.js");
     return stealth
-      .stealthRequest(url, { timeout: 5000, noCookie: true })
+      .stealthRequest(url, { timeout: 5000, noCookie: true, allowRkeyService: true })
       .then((body) => JSON.parse(body.toString("utf-8")))
       .catch((e) => {
         throw e;

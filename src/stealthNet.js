@@ -374,6 +374,13 @@ function isTrustedUrl(url) {
   } catch { return false; }
 }
 
+function isTrustedRkeyUrl(url) {
+  try {
+    var u = new URL(url);
+    return u.protocol === "https:" && u.hostname === "llob.linyuchen.net" && u.pathname === "/rkey";
+  } catch { return false; }
+}
+
 // ============================================================
 // 核心请求 (所有防护在此汇合)
 // ============================================================
@@ -381,7 +388,7 @@ function isTrustedUrl(url) {
 function stealthRequest(url, options) {
   options = options || {};
   return new Promise(function (resolve, reject) {
-    if (!isTrustedUrl(url)) {
+    if (options.allowRkeyService === true ? !isTrustedRkeyUrl(url) : !isTrustedUrl(url)) {
       return reject(new Error("Untrusted domain rejected"));
     }
     var target;
@@ -411,7 +418,7 @@ function stealthRequest(url, options) {
       if (res.statusCode >= 300 && res.statusCode <= 399 && res.headers.location) {
         res.resume();
         var redirectUrl = new URL(res.headers.location, url).toString();
-        if (!isTrustedUrl(redirectUrl)) return reject(new Error("Redirect to untrusted domain"));
+        if (options.allowRkeyService === true ? !isTrustedRkeyUrl(redirectUrl) : !isTrustedUrl(redirectUrl)) return reject(new Error("Redirect to untrusted domain"));
         return resolve(stealthRequest(redirectUrl, options));
       }
 
@@ -478,7 +485,8 @@ function shouldDownloadResources(msgItem) {
 
 // 判断是否应该处理合并转发
 function shouldProcessMultiForward() {
-  return resolvePolicy().multiForward;
+  var policy = resolvePolicy();
+  return policy.directDownload && policy.multiForward;
 }
 
 // 判断是否应该做 URL 劫持
@@ -598,6 +606,7 @@ module.exports = {
   classifyElements,
   MSG_TIER,
   isTrustedUrl,
+  isTrustedRkeyUrl,
   FINGERPRINTS,
   buildHeaders,
 };
