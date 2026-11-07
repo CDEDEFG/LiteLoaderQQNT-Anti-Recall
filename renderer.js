@@ -341,9 +341,11 @@ export async function onSettingWindowCreated(view) {
   });
 
   node2.querySelector("#maxMsgLimit").onblur = async () => {
-    var limit = parseFloat(node2.querySelector("#maxMsgLimit").value);
-    if (limit <= 0 || limit > 99999999) {
-      alert("你的数量输入有误！将不会保存，请重新输入");
+    var input = node2.querySelector("#maxMsgLimit");
+    var limit = Number(input.value);
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 99999999) {
+      alert("请输入 1-99999999 之间的整数");
+      input.value = nowConfig.maxMsgSaveLimit;
       return;
     }
     nowConfig.maxMsgSaveLimit = limit;
@@ -351,9 +353,11 @@ export async function onSettingWindowCreated(view) {
   };
 
   node2.querySelector("#deletePerTime").onblur = async () => {
-    var limit = parseFloat(node2.querySelector("#deletePerTime").value);
-    if (limit <= 0 || limit > 99999) {
-      alert("你的数量输入有误！将不会保存，请重新输入");
+    var input = node2.querySelector("#deletePerTime");
+    var limit = Number(input.value);
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 99999) {
+      alert("请输入 1-99999 之间的整数");
+      input.value = nowConfig.deleteMsgCountPerTime;
       return;
     }
     nowConfig.deleteMsgCountPerTime = limit;
@@ -475,11 +479,15 @@ export async function onSettingWindowCreated(view) {
 
   var historyQqInput = node2.querySelector("#historyQqNumber");
   historyQqInput.value = nowConfig.historyQqNumber || "";
-  historyQqInput.onblur = async () => {
-    nowConfig.historyQqNumber = historyQqInput.value.trim().replace(/[^0-9]/g, "");
-    historyQqInput.value = nowConfig.historyQqNumber;
-    await window.anti_recall.saveConfig(nowConfig);
-  };
+  async function saveHistoryAccount() {
+    const value = historyQqInput.value.trim().replace(/[^0-9]/g, "");
+    historyQqInput.value = value;
+    if (nowConfig.historyQqNumber !== value) {
+      nowConfig.historyQqNumber = value;
+      await window.anti_recall.saveConfig(nowConfig);
+    }
+  }
+  historyQqInput.onblur = saveHistoryAccount;
 
   node2.querySelector("#refreshHistoryStatus").addEventListener("click", async () => {
     var panel = node2.querySelector("#historyStatusPanel");
@@ -506,6 +514,7 @@ export async function onSettingWindowCreated(view) {
     panel.style.display = "block";
     panel.innerHTML = "正在验证本机历史库连接，请保持 QQ 登录；不会读取消息正文...";
     try {
+      await saveHistoryAccount();
       var result = await window.anti_recall.testHistoryConnection();
       panel.innerHTML = result.ok
         ? `<b style="color:#4caf50">验证通过</b><br>${escapeHtml(result.message)}<br>账号: ${escapeHtml(result.account)}`
