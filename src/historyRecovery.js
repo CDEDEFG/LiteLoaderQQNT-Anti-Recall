@@ -20,6 +20,7 @@ var recoveredCount = 0;
 var dbCache = new Map();
 var mediaIndexCache = new Map();
 var recoveryGeneration = 0;
+var cleanupTimer = null;
 
 function setOutput(fn) { outputFn = fn; }
 function setConfigGetter(fn) { configGetter = fn; }
@@ -143,6 +144,12 @@ function openPlaintextDatabase(account) {
       const db = new DatabaseSync(tempFile, { readOnly: true });
       const entry = { db, tempDir, tempFile, createdAt: Date.now() };
       dbCache.set(account.qq, entry);
+      // 明文快照只作短时查询缓存，60 秒到期自动删除，无需等待退出
+      cleanupTimer = setTimeout(() => {
+        cleanupTimer = null;
+        closePlaintextDatabases();
+      }, 60000);
+      cleanupTimer.unref?.();
       return entry;
     } catch (error) {
       try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
@@ -152,6 +159,10 @@ function openPlaintextDatabase(account) {
 }
 
 function closePlaintextDatabases() {
+  if (cleanupTimer !== null) {
+    clearTimeout(cleanupTimer);
+    cleanupTimer = null;
+  }
   for (const entry of dbCache.values()) {
     try { entry.db.close(); } catch {}
     try { fs.rmSync(entry.tempDir, { recursive: true, force: true }); } catch {}
@@ -317,6 +328,7 @@ function reset() {
 function status() {
   return {
     enabled: enabled(), supported: process.platform === 'win32',
+    requested: cfg().enableHistoryRecovery === true,
     connectionAllowed: connectionAllowed(),
     accounts: findAccounts().map((a) => a.qq), recoveredCount,
     selectedAccount: chooseAccount(findAccounts())?.qq || null,

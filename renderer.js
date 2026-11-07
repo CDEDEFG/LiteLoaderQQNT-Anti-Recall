@@ -487,7 +487,7 @@ export async function onSettingWindowCreated(view) {
     try {
       var status = await window.anti_recall.getHistoryStatus();
       panel.innerHTML =
-        `<b>启用状态:</b> ${status.enabled ? "已启用" : "未启用"}<br>` +
+        `<b>启用状态:</b> ${status.enabled ? "已启用" : (status.requested ? "已开启，但受当前风控模式限制" : "未启用")}<br>` +
         `<b>本机账号:</b> ${status.accounts.length ? status.accounts.map(escapeHtml).join("、") : "未发现"}<br>` +
         `<b>当前选择:</b> ${status.selectedAccount ? escapeHtml(status.selectedAccount) : "未指定（多账号需填写 QQ 号）"}<br>` +
         `<b>已恢复:</b> ${status.recoveredCount} 条<br>` +
