@@ -137,6 +137,7 @@ async function onLoad() {
 
   // IPC: 本地历史恢复状态
   ipcMain.handle("LiteLoader.anti_recall.getHistoryStatus", async () => historyRecovery.status());
+  ipcMain.handle("LiteLoader.anti_recall.testHistoryConnection", async () => historyRecovery.testConnection());
 
   // IPC: 反风控状态 (设置页展示用)
   ipcMain.handle("LiteLoader.anti_recall.getAntiRiskStatus", async () => {

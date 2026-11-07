@@ -286,4 +286,23 @@ function status() {
   };
 }
 
-module.exports = { setOutput, setConfigGetter, recoverMessage, status, closePlaintextDatabases, findAccounts, buildElements, queryMessage, rowToMessage };
+async function testConnection() {
+  if (process.platform !== 'win32') return { ok: false, error: '仅支持 Windows' };
+  try {
+    const accounts = findAccounts();
+    const account = chooseAccount(accounts);
+    if (!account) throw new Error(accounts.length ? '检测到多个 QQ 账号，请先填写 QQ 号' : '未找到本机 QQ 历史数据库');
+    const entry = await openPlaintextDatabase(account);
+    // 仅检查消息表能否访问，不读取消息正文
+    entry.db.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name IN (?, ?)').all('table', 'group_msg_table', 'c2c_msg_table');
+    closePlaintextDatabases();
+    lastError = '';
+    return { ok: true, account: account.qq, message: '本机历史库连接验证通过，未读取消息正文' };
+  } catch (error) {
+    lastError = error.message;
+    closePlaintextDatabases();
+    return { ok: false, error: error.message };
+  }
+}
+
+module.exports = { setOutput, setConfigGetter, recoverMessage, testConnection, status, closePlaintextDatabases, findAccounts, buildElements, queryMessage, rowToMessage };

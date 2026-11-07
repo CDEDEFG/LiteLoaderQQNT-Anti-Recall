@@ -209,6 +209,7 @@ export async function onSettingWindowCreated(view) {
               <setting-item>
                 <setting-text>历史恢复状态</setting-text>
                 <setting-button data-type="secondary" id="refreshHistoryStatus">刷新状态</setting-button>
+                <setting-button data-type="secondary" id="testHistoryConnection">仅测试连接</setting-button>
                 <div id="historyStatusPanel" style="width:100%; margin-top:8px; padding:12px; background:var(--fill_light_primary); border-radius:8px; font-size:13px; line-height:1.8; display:none;"></div>
               </setting-item>
             </setting-list>
@@ -456,6 +457,20 @@ export async function onSettingWindowCreated(view) {
         `<b>说明:</b> ${escapeHtml(status.note)}`;
     } catch (e) {
       panel.innerHTML = "获取失败: " + escapeHtml(e.message);
+    }
+  });
+
+  node2.querySelector("#testHistoryConnection").addEventListener("click", async () => {
+    var panel = node2.querySelector("#historyStatusPanel");
+    panel.style.display = "block";
+    panel.innerHTML = "正在验证本机历史库连接，请保持 QQ 登录；不会读取消息正文...";
+    try {
+      var result = await window.anti_recall.testHistoryConnection();
+      panel.innerHTML = result.ok
+        ? `<b style="color:#4caf50">验证通过</b><br>${escapeHtml(result.message)}<br>账号: ${escapeHtml(result.account)}`
+        : `<b style="color:#ff6d6d">验证失败</b><br>${escapeHtml(result.error)}`;
+    } catch (e) {
+      panel.innerHTML = "验证失败: " + escapeHtml(e.message);
     }
   });
 

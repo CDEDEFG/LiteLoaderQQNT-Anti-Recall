@@ -31,5 +31,7 @@ contextBridge.exposeInMainWorld("anti_recall", {
     getRecalledMsgs: () =>
         ipcRenderer.invoke("LiteLoader.anti_recall.getRecalledMsgs"),
     getHistoryStatus: () =>
-        ipcRenderer.invoke("LiteLoader.anti_recall.getHistoryStatus")
+        ipcRenderer.invoke("LiteLoader.anti_recall.getHistoryStatus"),
+    testHistoryConnection: () =>
+        ipcRenderer.invoke("LiteLoader.anti_recall.testHistoryConnection")
 });
