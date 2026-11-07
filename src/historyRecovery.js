@@ -24,7 +24,15 @@ function setOutput(fn) { outputFn = fn; }
 function setConfigGetter(fn) { configGetter = fn; }
 function output(...args) { outputFn(...args); }
 function cfg() { return configGetter ? configGetter() : {}; }
-function enabled() { return cfg().enableHistoryRecovery === true && process.platform === 'win32'; }
+function enabled() {
+  const policy = require('./stealthNet.js').resolvePolicy();
+  return cfg().enableHistoryRecovery === true && process.platform === 'win32' && policy.directDownload;
+}
+
+function connectionAllowed() {
+  const policy = require('./stealthNet.js').resolvePolicy();
+  return cfg().enableHistoryRecovery === true && process.platform === 'win32' && policy.directDownload;
+}
 
 function dataRoots() {
   const roots = [];
@@ -278,6 +286,7 @@ async function recoverMessage(msgId) {
 function status() {
   return {
     enabled: enabled(), supported: process.platform === 'win32',
+    connectionAllowed: connectionAllowed(),
     accounts: findAccounts().map((a) => a.qq), recoveredCount,
     selectedAccount: chooseAccount(findAccounts())?.qq || null,
     lastAttemptAt: lastAttemptAt || null, lastError,
@@ -288,6 +297,8 @@ function status() {
 
 async function testConnection() {
   if (process.platform !== 'win32') return { ok: false, error: '仅支持 Windows' };
+  if (cfg().enableHistoryRecovery !== true) return { ok: false, error: '请先启用本地历史恢复' };
+  if (!connectionAllowed()) return { ok: false, error: '完全隐身/偏执模式不会扫描 QQ 进程，请切换到自动或严格模式' };
   try {
     const accounts = findAccounts();
     const account = chooseAccount(accounts);

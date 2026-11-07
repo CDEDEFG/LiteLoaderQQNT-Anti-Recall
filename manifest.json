@@ -4,7 +4,7 @@
     "name": "防撤回",
     "slug": "anti_recall",
     "description": "防止QQNT撤回消息，支持文本/表情/图片/语音/视频/文件等12种消息类型，高性能零阻塞",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "icon": "./icon.png",
     "authors": [
         {
@@ -20,8 +20,8 @@
         "repo": "CDEDEFG/LiteLoaderQQNT-Anti-Recall",
         "branch": "master",
         "release": {
-            "tag": "1.0.1",
-            "file": "qq-anti-recall-1.0.1.zip"
+            "tag": "1.0.2",
+            "file": "qq-anti-recall-1.0.2.zip"
         }
     },
     "platform": ["win32", "darwin", "linux"],

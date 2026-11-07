@@ -198,7 +198,7 @@ export async function onSettingWindowCreated(view) {
             <setting-list data-direction="column">
               <setting-item>
                 <setting-text>启用本机历史消息恢复</setting-text>
-                <setting-text data-type="secondary">仅 Windows；QQ 保持登录时，从本机历史库按 msgId 恢复曾同步到本机的原文。密钥仅内存使用，不上传。默认关闭。</setting-text>
+                <setting-text data-type="secondary">仅 Windows；QQ 保持登录时，从本机历史库按 msgId 恢复曾同步到本机的原文。密钥仅内存使用，不上传。默认关闭；完全隐身/偏执模式下不会扫描进程。</setting-text>
                 <setting-switch id="switchHistoryRecovery"></setting-switch>
               </setting-item>
               <setting-item>
