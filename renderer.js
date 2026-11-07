@@ -240,6 +240,16 @@ export async function onSettingWindowCreated(view) {
   `;
 
   view.innerHTML = new_navbar_item;
+  // QQ setting-item 同行排列两个 setting-text 与控件时，长说明会挤压并截断控件。
+  // 用块级容器承载标题和说明，保持原生组件样式，同时支持换行和窄窗口。
+  for (const item of view.querySelectorAll(".anti-recall-wrapper setting-item")) {
+    const directTexts = Array.from(item.children).filter((child) => child.tagName === "SETTING-TEXT");
+    if (directTexts.length < 2) continue;
+    const label = document.createElement("div");
+    label.className = "setting-label";
+    item.insertBefore(label, directTexts[0]);
+    for (const text of directTexts) label.appendChild(text);
+  }
   const node2 = view.querySelector(".anti-recall-wrapper");
   // setting-switch helper: is-active attribute controls on/off
   function setSwitch(el, on) { if (on) el.setAttribute("is-active", ""); else el.removeAttribute("is-active"); }
