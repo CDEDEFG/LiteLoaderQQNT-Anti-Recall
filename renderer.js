@@ -506,10 +506,12 @@ export async function onSettingWindowCreated(view) {
     }
   });
 
+  let historyTestRunning = false;
   node2.querySelector("#testHistoryConnection").addEventListener("click", async () => {
+    if (historyTestRunning) return;
+    historyTestRunning = true;
     var button = node2.querySelector("#testHistoryConnection");
-    if (button.disabled) return;
-    button.disabled = true;
+    button.setAttribute("is-disabled", "");
     var panel = node2.querySelector("#historyStatusPanel");
     panel.style.display = "block";
     panel.innerHTML = "正在验证本机历史库连接，请保持 QQ 登录；不会读取消息正文...";
@@ -522,7 +524,8 @@ export async function onSettingWindowCreated(view) {
     } catch (e) {
       panel.innerHTML = "验证失败: " + escapeHtml(e.message);
     } finally {
-      button.disabled = false;
+      button.removeAttribute("is-disabled");
+      historyTestRunning = false;
     }
   });
 
